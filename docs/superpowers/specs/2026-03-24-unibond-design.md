@@ -43,12 +43,15 @@ UniBond 是一款面向情侣的 iOS App，核心功能是每日 AI 生成的默
 
 ### 内存分配策略 (2G ECS)
 
-| 组件 | 内存 |
-|------|------|
-| Spring Boot (JVM -Xmx512m) | ~600MB |
-| PostgreSQL | ~400MB |
-| Redis (maxmemory 128mb) | ~150MB |
-| OS + Nginx + 其他 | ~900MB |
+| 组件 | 配置 | 实际占用 |
+|------|------|---------|
+| Spring Boot (JVM -Xmx384m) | -Xmx384m -Xms256m | ~450MB |
+| PostgreSQL (shared_buffers=128MB) | shared_buffers=128MB, work_mem=4MB, max_connections=30 | ~200MB |
+| Redis (maxmemory 64mb) | maxmemory 64mb, maxmemory-policy allkeys-lru | ~80MB |
+| OS + Docker + Nginx + sshd | — | ~500MB |
+| **预留缓冲** | — | ~818MB |
+
+注意：2048MB 总内存，实际可用约 1800MB（内核保留）。以上配置留有充足余量，避免 OOM。
 
 ---
 
@@ -146,11 +149,13 @@ Redis 同步存储: `mood:{userId} → { emoji, text, updatedAt, version }`
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| couple_id | BIGINT FK | 所属情侣 |
-| date | DATE | 日期 |
+| couple_id | BIGINT FK | 复合主键之一 |
+| date | DATE | 复合主键之一 |
 | match_score | INT | 默契分 |
 | streak_days | INT | 连续天数 |
 | quiz_type_played | ENUM | 当日玩法 |
+
+主键：`PRIMARY KEY (couple_id, date)`
 
 ---
 
@@ -176,20 +181,31 @@ QuizGenerationService
 - **异步预生成**：凌晨批量为所有情侣生成当日题目
 - **降级兜底**：LLM API 失败时从 QuestionPool 抽题
 - **费用控制**：每对情侣每天1次调用，约 500-800 token
+- **输入净化**：所有用户输入（心情短语、历史答案）在构造 Prompt 前进行转义和截断，防止 Prompt 注入
+- **输出校验**：LLM 返回的 JSON 必须通过严格 Schema 验证（题目数量、选项格式、内容长度），校验失败则降级到兜底题库
+
+### 题目数量标准
+
+所有模式统一为 **5 题**，确保分数可比较（默契分 = 匹配数 / 5 × 100）。
 
 ### 2. 问答三种模式
 
 **双人盲答 (blind)**
 
-系统推送5道题 → A/B 各自独立作答 → 双方都提交后揭晓对比 → 计算默契分 (相同答案数/总题数 × 100)
+系统推送5道题 → A/B 各自独立作答 → 双方都提交后揭晓对比 → 计算默契分 (相同答案数/5 × 100)
 
 **猜对方 (guess)**
 
-系统出题"B最喜欢的X是？" → A猜B的答案，B回答自己的真实答案 → 反向同理 → 猜中数/总题数 × 100
+系统出题"B最喜欢的X是？" → A猜B的答案，B回答自己的真实答案 → 反向同理 → 猜中数/5 × 100
 
 **主题挑战 (theme)**
 
-系统选定主题(美食/旅行/回忆等) → 围绕主题出5-8道题 → 双人盲答流程 → 生成主题默契报告卡片
+系统选定主题(美食/旅行/回忆等) → 围绕主题出5道题 → 双人盲答流程 → 生成主题默契报告卡片
+
+**答题并发控制：**
+- 答题提交幂等：同一用户对同一 DailyQuiz 重复提交返回已有答案，不覆盖
+- 揭晓触发：提交答案时在事务内 `SELECT COUNT(*) FROM quiz_answer WHERE daily_quiz_id = ? FOR UPDATE`，等于2时设 `revealed = true`
+- UNIQUE 约束：`(daily_quiz_id, user_id)` 防止重复插入
 
 **每日轮转规则**
 
@@ -221,6 +237,14 @@ A 更新心情 → POST /api/v1/mood → DB + Redis
 - 灵动岛紧凑态：emoji + 昵称
 - 灵动岛展开态：emoji + 昵称 + 短语 + 时间
 - 锁屏横幅：App名 + emoji + 昵称 + 短语 + 更新时间
+
+**Live Activity 生命周期：**
+
+- **启动时机**：用户打开 App 且已绑定情侣时自动启动（如无活跃的 Live Activity）
+- **更新方式**：服务端通过 APNs push-to-update 推送 content-state（包含 emoji、text、updatedAt）
+- **8小时到期**：iOS 强制 Live Activity 最长存活8小时。到期后进入 `dismissed` 或 `ended` 状态
+- **重启策略**：App 每次进入前台时检查，若无活跃 Live Activity 则重新启动
+- **APNs Payload 格式**：`{ "aps": { "timestamp": epoch, "event": "update", "content-state": { "emoji": "😊", "text": "心情好", "updatedAt": "..." } } }`
 
 **Widget 显示：**
 
@@ -264,11 +288,26 @@ A 更新心情 → POST /api/v1/mood → DB + Redis
 - JWT (Access Token 2小时 + Refresh Token 30天)
 - Token 存 iOS Keychain
 - 401 时自动用 Refresh Token 换新
+- **Refresh Token 服务端存储**：存入 Redis（key: `refresh:{userId}`, TTL 30天），支持主动吊销
+- **Token 轮转**：每次刷新时签发新 Refresh Token，旧 Token 立即失效
+- **吊销场景**：登出、解绑情侣、账号删除时删除 Redis 中的 Refresh Token
 
 ### 情侣绑定
 
-- 注册后生成唯一6位邀请码
+- 注册后生成唯一6位邀请码（大写字母+数字，排除易混淆字符 0/O/I/L，字符集共32个字符）
+- 生成方式：SecureRandom 生成 + DB UNIQUE 约束，冲突时重试（最多3次）
 - 输入对方邀请码完成绑定
+- 绑定尝试限流：每用户每分钟最多5次
+
+### 解绑流程
+
+1. A 请求解绑 → 服务端将 Couple.status 设为 `dissolved`
+2. 清除双方 User.partner_id
+3. 取消当日未完成的 DailyQuiz（标记为 cancelled）
+4. 终止对方的 Live Activity（发送 APNs end 事件）
+5. 推送通知 B："你的情侣关系已被解除"
+6. **历史数据保留**：QuizAnswer、DailyStats、Achievement 保留不删除，但解绑后不可查看对方数据
+7. **重新绑定**：解绑后可立即与新的邀请码绑定，无冷却期
 
 ---
 
@@ -295,6 +334,8 @@ POST   /api/v1/auth/apple            Apple登录
 POST   /api/v1/auth/email/send       发送邮箱验证码
 POST   /api/v1/auth/email/login      邮箱验证码登录/注册
 POST   /api/v1/auth/refresh          刷新Token
+POST   /api/v1/auth/logout           登出（吊销Refresh Token）
+DELETE /api/v1/user/account          删除账号（Apple审核要求）
 ```
 
 ### User 用户
@@ -474,3 +515,123 @@ UniBond/
 - 毛玻璃半透明卡片
 - 圆角设计，柔和阴影
 - 清晰的信息层级
+
+---
+
+## 安全与数据隔离
+
+### 接口限流
+
+| 端点 | 限制 |
+|------|------|
+| POST /api/v1/auth/email/send | 同一邮箱：1次/60秒，5次/小时 |
+| POST /api/v1/auth/email/login | 同一IP：10次/分钟 |
+| POST /api/v1/couple/bind | 同一用户：5次/分钟 |
+| 其他认证接口 | 同一IP：30次/分钟 |
+| 业务接口（已认证） | 同一用户：60次/分钟 |
+
+实现方式：Spring Boot + Redis 令牌桶（Bucket4j 或自定义拦截器）
+
+### 数据隔离
+
+- 每个 API 请求在 Service 层校验：`当前用户.coupleId == 请求资源.coupleId`
+- 通过 Spring Security 自定义 `@PreAuthorize` 或 Service 层 guard 实现
+- 未绑定情侣的用户只能访问 Auth/User/Couple 相关接口
+
+### 输入校验
+
+- nickname：最长20字符，过滤特殊字符
+- mood_text：最长50字符，过滤特殊字符
+- mood_emoji：仅允许 Unicode emoji 字符
+- 所有用户输入在存储前进行 XSS 过滤
+
+---
+
+## 错误处理
+
+### 标准错误响应格式
+
+```json
+{
+  "code": "QUIZ_ALREADY_ANSWERED",
+  "message": "你已经回答过今天的题目了",
+  "timestamp": "2026-03-24T10:30:00Z"
+}
+```
+
+### HTTP 状态码约定
+
+| 状态码 | 用途 |
+|--------|------|
+| 200 | 成功 |
+| 201 | 创建成功（绑定、答题提交） |
+| 304 | 未修改（心情轮询带 version 时） |
+| 400 | 请求参数错误 |
+| 401 | 未认证 / Token 过期 |
+| 403 | 无权限（访问非自己情侣的数据） |
+| 404 | 资源不存在 |
+| 409 | 冲突（重复绑定、重复答题） |
+| 429 | 请求过于频繁（限流） |
+| 500 | 服务端内部错误 |
+
+### 应用错误码
+
+| 错误码 | 说明 |
+|--------|------|
+| AUTH_CODE_EXPIRED | 验证码已过期 |
+| AUTH_CODE_INVALID | 验证码错误 |
+| AUTH_TOKEN_EXPIRED | Token已过期 |
+| COUPLE_ALREADY_BOUND | 已绑定情侣 |
+| COUPLE_NOT_BOUND | 未绑定情侣 |
+| INVITE_CODE_INVALID | 邀请码无效 |
+| INVITE_CODE_SELF | 不能绑定自己 |
+| QUIZ_NOT_AVAILABLE | 今日题目尚未生成 |
+| QUIZ_ALREADY_ANSWERED | 已回答过 |
+| QUIZ_NOT_REVEALED | 结果未揭晓（对方未答完） |
+| RATE_LIMIT_EXCEEDED | 请求频率超限 |
+
+---
+
+## 时区处理
+
+- 服务端统一使用 **UTC** 存储所有时间戳
+- "每日"的定义基于 **用户注册时设置的时区**（User 表增加 `timezone` 字段，如 `Asia/Shanghai`）
+- 凌晨定时任务按各情侣的时区分批生成题目（按时区分组，在各时区的 00:05 生成）
+- `Day % 3` 轮转规则中的 Day 基于情侣所在时区的本地日期
+- iOS 端在注册和每次 App 启动时上报当前时区
+
+---
+
+## 分页约定
+
+列表接口统一使用游标分页：
+
+```
+请求：GET /api/v1/quiz/history?cursor={lastId}&size=20
+响应：
+{
+  "data": [...],
+  "cursor": "下一页游标，null表示没有更多",
+  "hasMore": true
+}
+```
+
+默认 size = 20，最大 size = 50。
+
+---
+
+## Widget 数据共享机制
+
+- Main App 和 WidgetKit Extension 通过 **App Group** 共享数据
+- App Group ID: `group.com.unibond.shared`
+- 共享方式：`UserDefaults(suiteName: "group.com.unibond.shared")`
+- 写入时机：App 前台时拉取到新数据后立刻写入
+- 共享数据：
+
+| Key | 类型 | 说明 |
+|-----|------|------|
+| match_score_today | Int | 今日默契分 |
+| streak_days | Int | 连续天数 |
+| quiz_answered_today | Bool | 今天是否已答题 |
+| quiz_type_today | String | 今日模式 |
+| partner_nickname | String | 对方昵称 |
