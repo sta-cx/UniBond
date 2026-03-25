@@ -1,0 +1,23 @@
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# Maven
+target/
+
+# Spring Boot
+*.log
+logs/
+
+# Docker
+docker-compose.override.yml
+
+# Secrets
+*.p8
+*.pem
+.env
+
+# OS
+.DS_Store
+Thumbs.db
