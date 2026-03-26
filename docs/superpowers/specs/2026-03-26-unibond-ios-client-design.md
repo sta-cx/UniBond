@@ -111,14 +111,15 @@ class AppState {
 - **已登录未绑定** → `MainTabView`，首页显示绑定引导卡片，问答/统计锁定
 - **已登录已绑定** → `MainTabView`，全部功能可用
 
-### Tab Bar (4 Tabs)
+### Tab Bar (3 Tabs)
 
 | Tab | 页面 | 说明 |
 |-----|------|------|
 | 首页 | HomeView | 每日概览、问答入口、心情同步 |
-| 问答 | QuizAnswerView | 从首页进入答题流程 |
 | 统计 | StatsView | 趋势图、成就 |
 | 我的 | ProfileView | 个人信息、设置 |
+
+> 注：问答流程通过首页 NavigationStack push 进入，不作为独立 Tab。
 
 ### Page Navigation (NavigationStack)
 
@@ -163,9 +164,10 @@ actor APIClient {
 | User | 获取我的信息 / 更新昵称头像 | GET / PUT |
 | Couple | 绑定伴侣 / 解绑 / 获取情侣信息 | POST / DELETE / GET |
 | Quiz | 获取今日问答 / 提交答案 / 获取结果 | GET / POST |
-| Mood | 获取心情 / 更新心情 | GET / PUT |
+| Mood | 获取伴侣心情 / 更新我的心情 | GET / POST |
 | Stats | 获取统计 / 获取成就列表 | GET |
 | Push | 注册 Device Token | POST |
+| User | 删除账号 | DELETE |
 
 ### Error Handling
 
@@ -174,6 +176,7 @@ actor APIClient {
 ```swift
 enum APIError: Error {
     case unauthorized          // 401 → 跳转登录
+    case forbidden             // 403 → 无权限，刷新状态
     case coupleNotBound        // COUPLE_NOT_BOUND → 引导绑定
     case quizAlreadyAnswered   // QUIZ_ALREADY_ANSWERED → 显示已答
     case rateLimited           // 429 → 提示稍后重试
@@ -188,20 +191,24 @@ enum APIError: Error {
 
 **Apple Sign-in:**
 1. 调用 `AuthenticationServices` 获取 `identityToken` + `authorizationCode`
-2. 发送到后端 `/api/auth/apple` → 返回 JWT Token 对
+2. 发送到后端 `/api/auth/apple`，附带 `TimeZone.current.identifier` → 返回 JWT Token 对
 3. 存入 Keychain，更新 AppState → 进入主界面
 
 **邮箱验证码登录：**
 1. 输入邮箱 → 调用发送验证码接口（60 秒倒计时）
-2. 输入 6 位验证码 → 调用登录接口 → 返回 JWT Token
+2. 输入 6 位验证码 → 调用登录接口，附带 `TimeZone.current.identifier` → 返回 JWT Token
 3. 同上存储并进入主界面
+
+**时区同步：** 每次 App 进入前台（`scenePhase == .active`），检查时区是否变化，若变化则调用 `PUT /api/v1/user/profile` 更新。
+
+LoginView 内部包含两个子状态：Apple 登录按钮 + 邮箱验证码流程（输入邮箱 → 输入验证码，作为 LoginView 内的视图切换，不需要独立页面）。
 
 ### Couple Module
 
 **绑定流程：**
 - 未绑定用户看到自己的 6 位邀请码（可复制/分享）
 - 输入对方邀请码 → 调用绑定接口 → 成功后刷新 AppState.coupleState
-- 使用 `UIActivityViewController` 做系统分享
+- 使用 `ShareLink(item:)` 做系统分享（SwiftUI 原生）
 
 **解绑流程：**
 - ProfileView 点击解绑 → 弹出确认弹窗
@@ -220,7 +227,7 @@ enum APIError: Error {
 | 可答题 | HomeView 显示"开始答题"卡片 | GET /api/quiz/today |
 | 答题中 | QuizAnswerView (逐题切换) | 本地状态 |
 | 已提交等待 | QuizWaitingView | 后端返回 revealed=false |
-| 等待揭晓 | HomeView "等待开奖" | 轮询或推送通知 |
+| 等待揭晓 | HomeView "等待开奖" | 轮询 GET /api/v1/quiz/result/{date}，每 30 秒一次；推送通知作为辅助触发 |
 | 已揭晓 | QuizResultView (分数+对比) | GET /api/quiz/result |
 
 **答题交互：** 选择选项后高亮，5 题答完一次性提交。
@@ -229,7 +236,9 @@ enum APIError: Error {
 
 - 9 个 Emoji 网格选择
 - 可选填心情短语（50 字以内）
-- 点击"更新心情"调用 PUT 接口
+- 点击"更新心情"调用 POST /api/v1/mood 接口
+- 用户自己的心情从 POST 响应中获取并本地缓存
+- 伴侣心情通过 GET /api/v1/mood/partner 获取
 - 首页实时显示双方心情状态
 - Live Activity 展示伴侣最新心情（ActivityKit）
 
@@ -241,9 +250,11 @@ enum APIError: Error {
 
 ### Profile Module
 
-**已绑定状态：** 头像昵称编辑、伴侣信息（天数计算）、邀请码展示、解绑入口、设置列表（通知/隐私/反馈/关于）、退出登录
+**已绑定状态：** 头像昵称编辑、伴侣信息（天数计算）、邀请码展示、解绑入口、设置列表（通知/隐私/反馈/关于/删除账号）、退出登录
 
-**未绑定状态：** 头像昵称编辑、绑定引导卡片、精简设置列表
+**未绑定状态：** 头像昵称编辑、绑定引导卡片、精简设置列表（通知/关于/删除账号）、退出登录
+
+**删除账号流程：** 设置中点击"删除账号" → 二次确认弹窗（destructive 样式）→ 调用 `DELETE /api/v1/user/account` → 清除本地数据 → 跳转登录页。此功能为 App Store 审核必需。
 
 ### Widget & Live Activity
 
@@ -252,6 +263,8 @@ enum APIError: Error {
 **Widget Medium (364x170)：** 默契分 + 今日模式 + 伴侣心情 + 答题状态
 
 **数据更新：** 通过 App Group 共享 UserDefaults，答题/心情更新后调用 `WidgetCenter.shared.reloadAllTimelines()`
+
+**Widget 时间线策略：** `.after(Date)` 返回每 2 小时刷新一次的时间线，答题提交和心情更新后额外触发 `reloadAllTimelines()`。
 
 **Live Activity：** 心情更新后通过 APNs 推送更新锁屏上的心情状态展示
 
@@ -293,7 +306,7 @@ enum APIError: Error {
 | `CardView` | 白色半透明圆角卡片容器 |
 | `PrimaryButton` | 渐变主按钮（紫→粉） |
 | `SecondaryButton` | 白底描边次按钮 |
-| `TabBarView` | 自定义底部 4 Tab 导航 |
+| `TabBarView` | 自定义底部 3 Tab 导航 |
 | `StatCard` | 统计数字卡片 |
 | `EmojiGrid` | 心情 Emoji 选择网格 |
 | `QuizOptionRow` | 答题选项行（A/B/C/D） |
@@ -321,4 +334,126 @@ enum APIError: Error {
 | zWolL | Quiz Complete (等待对方) | 等待伴侣完成答题 |
 | rPGgW | Home Screen (等待揭晓) | 催一下 TA |
 | VSDcp | Home Screen (Widget 弹窗) | 开启桌面小组件权限 |
-| 4fcdY | (空白占位) | - |
+
+> 注：屏幕 4fcdY 为空白占位帧，不对应实际功能页面。
+
+## Data Models
+
+iOS 端 Codable 结构体，对应后端 DTO：
+
+```swift
+// Auth
+struct AuthResponse: Codable {
+    let accessToken: String
+    let refreshToken: String
+}
+
+// User
+struct UserResponse: Codable {
+    let id: Int64
+    let email: String?
+    let nickname: String
+    let avatarUrl: String?
+    let inviteCode: String
+    let partnerId: Int64?
+    let timezone: String
+    let createdAt: String
+}
+
+// Couple
+struct CoupleResponse: Codable {
+    let id: Int64
+    let partnerNickname: String
+    let partnerAvatarUrl: String?
+    let anniversaryDate: String?
+    let status: String  // ACTIVE / DISSOLVED
+    let createdAt: String
+}
+
+// Quiz
+struct DailyQuizResponse: Codable {
+    let id: Int64
+    let date: String
+    let quizType: String  // BLIND / GUESS / THEME
+    let questions: [QuizQuestion]
+    let myAnswer: QuizAnswerResponse?
+    let partnerAnswer: QuizAnswerResponse?
+    let revealed: Bool
+}
+
+struct QuizQuestion: Codable {
+    let index: Int
+    let content: String
+    let options: [String]
+}
+
+struct QuizAnswerResponse: Codable {
+    let answers: [Int]
+    let score: Int?
+}
+
+// Mood
+struct MoodResponse: Codable {
+    let emoji: String
+    let text: String?
+    let updatedAt: String
+}
+
+// Stats
+struct WeeklyStatsResponse: Codable {
+    let dailyStats: [DailyStat]
+    let averageScore: Int
+    let currentStreak: Int
+    let totalQuizzes: Int
+}
+
+struct DailyStat: Codable {
+    let date: String
+    let matchScore: Int?
+    let quizType: String?
+}
+
+struct AchievementResponse: Codable {
+    let type: String
+    let unlockedAt: String?
+}
+
+// Pagination
+struct CursorPage<T: Codable>: Codable {
+    let items: [T]
+    let nextCursor: String?
+    let hasMore: Bool
+}
+```
+
+## Offline Behavior
+
+- 无网络时显示非侵入式顶部横幅提示"无网络连接"
+- 禁用需要网络的操作（答题、更新心情、绑定/解绑等），按钮显示为禁用状态
+- 展示本地缓存的最后数据：统计数据、心情状态、用户信息
+- 网络恢复后自动隐藏横幅，恢复按钮交互
+- 不做离线队列（MVP 阶段不缓存未提交操作）
+
+## Empty States
+
+| 场景 | 显示内容 |
+|------|---------|
+| 新绑定情侣，无统计数据 | 插图 + "开始你们的第一次默契挑战吧！" |
+| 无成就解锁 | 所有徽章灰色 + 锁图标 + "继续答题解锁更多成就" |
+| 伴侣未设置心情 | 心情位置显示默认占位 "TA 还没有更新心情" |
+| 今日无问答（异常） | "今天的题目正在准备中，请稍后再来" |
+
+## Push Notification Handling
+
+用户点击推送通知时的目标页面映射：
+
+| 通知类型 | 目标页面 |
+|---------|---------|
+| 每日问答提醒 | HomeView（开始答题卡片） |
+| 伴侣已答题 | QuizWaitingView → 自动检查是否可揭晓 |
+| 结果已揭晓 | QuizResultView |
+| 伴侣更新心情 | HomeView（心情同步区域） |
+| 成就解锁 | StatsView（成就区域） |
+| 连续打卡里程碑 | StatsView |
+
+**实现方式：** 通过 `UNUserNotificationCenterDelegate` 的 `userNotificationCenter(_:didReceive:)` 解析通知 payload 中的 `type` 字段，更新 `AppRouter` 的导航目标。
