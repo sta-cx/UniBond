@@ -302,6 +302,7 @@ struct UserResponse: Codable, Equatable {
 struct ProfileUpdateRequest: Codable {
     let nickname: String?
     let avatarUrl: String?
+    let timezone: String?
 }
 
 // MARK: - Couple
@@ -2585,7 +2586,6 @@ class MoodViewModel {
             )
             myMood = response
             // Update widget
-            AppSettings.shared.sharedPartnerMoodEmoji = emoji
             WidgetCenter.shared.reloadAllTimelines()
             isLoading = false
             return true
@@ -3085,7 +3085,7 @@ class ProfileViewModel {
         isLoading = true
         do {
             let user: UserResponse = try await apiClient.request(
-                .updateProfile(ProfileUpdateRequest(nickname: nickname, avatarUrl: nil))
+                .updateProfile(ProfileUpdateRequest(nickname: nickname, avatarUrl: nil, timezone: nil))
             )
             appState.authState = .authenticated(user)
             isEditing = false
@@ -3322,7 +3322,7 @@ if scenePhase == .active, appState.isAuthenticated {
     if tz != AppSettings.shared.lastTimezone {
         AppSettings.shared.lastTimezone = tz
         Task {
-            try? await apiClient.requestVoid(.updateProfile(ProfileUpdateRequest(nickname: nil, avatarUrl: nil)))
+            try? await apiClient.requestVoid(.updateProfile(ProfileUpdateRequest(nickname: nil, avatarUrl: nil, timezone: tz)))
         }
     }
 }
