@@ -288,7 +288,7 @@ struct AuthResponse: Codable {
 }
 
 // MARK: - User
-struct UserResponse: Codable {
+struct UserResponse: Codable, Equatable {
     let id: Int64
     let email: String?
     let nickname: String
@@ -305,7 +305,7 @@ struct ProfileUpdateRequest: Codable {
 }
 
 // MARK: - Couple
-struct CoupleResponse: Codable {
+struct CoupleResponse: Codable, Equatable {
     let id: Int64
     let partnerUserId: Int64
     let partnerNickname: String
@@ -573,7 +573,6 @@ final class AppSettings {
     }
 
     func clearAll() {
-        KeychainManager.shared.deleteTokens()
         let domain = Bundle.main.bundleIdentifier!
         defaults.removePersistentDomain(forName: domain)
     }
@@ -773,7 +772,7 @@ final class APIClientTests: XCTestCase {
     func testBuildURLRequest() async throws {
         let client = APIClient(baseURL: "https://example.com")
         let endpoint = APIEndpoint(path: "/api/v1/user/me", method: .GET)
-        let request = try client.buildRequest(for: endpoint)
+        let request = try await client.buildRequest(for: endpoint)
         XCTAssertEqual(request.url?.absoluteString, "https://example.com/api/v1/user/me")
         XCTAssertEqual(request.httpMethod, "GET")
     }
@@ -782,7 +781,7 @@ final class APIClientTests: XCTestCase {
         let client = APIClient(baseURL: "https://example.com")
         let body = EmailSendRequest(email: "test@example.com")
         let endpoint = APIEndpoint.emailSend(body)
-        let request = try client.buildRequest(for: endpoint)
+        let request = try await client.buildRequest(for: endpoint)
         XCTAssertEqual(request.httpMethod, "POST")
         XCTAssertNotNil(request.httpBody)
         let decoded = try JSONDecoder().decode(EmailSendRequest.self, from: request.httpBody!)
@@ -1237,7 +1236,7 @@ struct PrimaryButton: View {
             .frame(maxWidth: .infinity)
             .padding(.vertical, 14)
             .foregroundStyle(.white)
-            .background(isDisabled ? Color.gray.opacity(0.4) : AnyShapeStyle(AppColors.primaryGradient))
+            .background(isDisabled ? AnyShapeStyle(Color.gray.opacity(0.4)) : AnyShapeStyle(AppColors.primaryGradient))
             .clipShape(RoundedRectangle(cornerRadius: 24))
         }
         .disabled(isDisabled)
@@ -1559,7 +1558,7 @@ enum LoginStep {
     case codeInput     // Enter verification code
 }
 
-@Observable
+@MainActor @Observable
 class AuthViewModel {
     var loginStep: LoginStep = .initial
     var email: String = ""
@@ -1568,8 +1567,8 @@ class AuthViewModel {
     var errorMessage: String?
     var countdown: Int = 0
 
-    private let apiClient: APIClient
-    private let appState: AppState
+    let apiClient: APIClient
+    let appState: AppState
     private var countdownTimer: Timer?
 
     var isEmailValid: Bool {
@@ -1712,17 +1711,15 @@ import AuthenticationServices
 
 struct LoginView: View {
     @Environment(AppState.self) private var appState
-    @State private var viewModel: AuthViewModel
+    @State private var viewModel: AuthViewModel?
     @State private var authService = AuthService()
-
-    init(apiClient: APIClient) {
-        _viewModel = State(initialValue: AuthViewModel(apiClient: apiClient, appState: AppState()))
-    }
+    let apiClient: APIClient
 
     var body: some View {
         ZStack {
             AppColors.backgroundGradient.ignoresSafeArea()
 
+            if let viewModel {
             VStack(spacing: 24) {
                 Spacer()
                 // Logo
@@ -1760,8 +1757,9 @@ struct LoginView: View {
                     .foregroundStyle(AppColors.textSecondary)
             }
             .padding(.horizontal, 32)
+            }
         }
-        .onAppear { viewModel = AuthViewModel(apiClient: viewModel.apiClient, appState: appState) }
+        .onAppear { viewModel = AuthViewModel(apiClient: apiClient, appState: appState) }
     }
 
     private var initialButtons: some View {
@@ -1775,7 +1773,7 @@ struct LoginView: View {
                         if let credential = auth.credential as? ASAuthorizationAppleIDCredential,
                            let tokenData = credential.identityToken,
                            let token = String(data: tokenData, encoding: .utf8) {
-                            await viewModel.loginWithApple(identityToken: token, nickname: credential.fullName?.givenName)
+                            await viewModel?.loginWithApple(identityToken: token, nickname: credential.fullName?.givenName)
                         }
                     case .failure:
                         break
@@ -1789,14 +1787,14 @@ struct LoginView: View {
             divider
 
             SecondaryButton("邮箱验证码登录", icon: "envelope.fill") {
-                viewModel.loginStep = .emailInput
+                viewModel?.loginStep = .emailInput
             }
         }
     }
 
     private var emailInputSection: some View {
         VStack(spacing: 16) {
-            TextField("请输入邮箱", text: $viewModel.email)
+            TextField("请输入邮箱", text: Binding(get: { viewModel?.email ?? "" }, set: { viewModel?.email = $0 }))
                 .keyboardType(.emailAddress)
                 .textContentType(.emailAddress)
                 .autocapitalization(.none)
@@ -1804,31 +1802,31 @@ struct LoginView: View {
                 .background(.white.opacity(0.8))
                 .clipShape(RoundedRectangle(cornerRadius: 12))
 
-            PrimaryButton("获取验证码", isDisabled: !viewModel.isEmailValid || viewModel.isLoading) {
-                Task { await viewModel.sendCode() }
+            PrimaryButton("获取验证码", isDisabled: !(viewModel?.isEmailValid ?? false) || (viewModel?.isLoading ?? false)) {
+                Task { await viewModel?.sendCode() }
             }
         }
     }
 
     private var codeInputSection: some View {
         VStack(spacing: 16) {
-            TextField("请输入 6 位验证码", text: $viewModel.code)
+            TextField("请输入 6 位验证码", text: Binding(get: { viewModel?.code ?? "" }, set: { viewModel?.code = $0 }))
                 .keyboardType(.numberPad)
                 .textContentType(.oneTimeCode)
                 .padding(16)
                 .background(.white.opacity(0.8))
                 .clipShape(RoundedRectangle(cornerRadius: 12))
 
-            PrimaryButton("登录", isDisabled: !viewModel.isCodeValid || viewModel.isLoading) {
-                Task { await viewModel.loginWithEmail() }
+            PrimaryButton("登录", isDisabled: !(viewModel?.isCodeValid ?? false) || (viewModel?.isLoading ?? false)) {
+                Task { await viewModel?.loginWithEmail() }
             }
 
-            if viewModel.countdown > 0 {
-                Text("重新发送 (\(viewModel.countdown)s)")
+            if let countdown = viewModel?.countdown, countdown > 0 {
+                Text("重新发送 (\(countdown)s)")
                     .font(.system(size: 13))
                     .foregroundStyle(AppColors.textSecondary)
             } else {
-                Button("重新发送验证码") { Task { await viewModel.sendCode() } }
+                Button("重新发送验证码") { Task { await viewModel?.sendCode() } }
                     .font(.system(size: 13))
                     .foregroundStyle(AppColors.primaryPurple)
             }
@@ -1864,28 +1862,302 @@ git commit -m "feat: implement Auth module with Apple Sign-in and email login"
 
 - [ ] **Step 1: Implement HomeViewModel**
 
-HomeViewModel loads overview data, quiz status, and mood. It manages the 5 home screen states:
-- Unbound → show bind prompt
-- Quiz available → show "start quiz" card
-- Answered, waiting → show "waiting for partner"
-- Waiting to reveal → show "waiting to reveal" + nudge button
-- Revealed → show score summary
+```swift
+import SwiftUI
+import WidgetKit
 
-Key methods:
-- `loadData()` — calls overview, quiz today, partner mood
-- `startPolling()` / `stopPolling()` — 30s poll for quiz result when waiting
-- Quiz state derived from `QuizResponse` + `QuizResultResponse`
+enum QuizCardState {
+    case unbound
+    case available(QuizResponse)
+    case answeredWaiting(date: String)
+    case waitingReveal(date: String)
+    case revealed(QuizResultResponse)
+}
+
+@MainActor @Observable
+class HomeViewModel {
+    var quizCardState: QuizCardState = .unbound
+    var overview: OverviewResponse?
+    var myMood: MoodResponse?
+    var partnerMood: MoodResponse?
+    var isLoading = false
+    var errorMessage: String?
+
+    private let apiClient: APIClient
+    private let appState: AppState
+    private var pollingTask: Task<Void, Never>?
+
+    init(apiClient: APIClient, appState: AppState) {
+        self.apiClient = apiClient
+        self.appState = appState
+    }
+
+    func loadData() async {
+        guard appState.isBound else {
+            quizCardState = .unbound
+            return
+        }
+        isLoading = true
+        do {
+            // Load overview, quiz, partner mood in parallel
+            async let overviewResult: OverviewResponse = apiClient.request(.overview)
+            async let partnerMoodResult: MoodResponse? = try? apiClient.request(.partnerMood)
+
+            overview = try await overviewResult
+            partnerMood = try await partnerMoodResult
+
+            // Update shared data for Widget
+            if let ov = overview {
+                AppSettings.shared.sharedTodayScore = ov.todayScore
+                AppSettings.shared.sharedStreakDays = ov.streakDays
+            }
+
+            // Determine quiz state
+            await loadQuizState()
+        } catch {
+            errorMessage = (error as? APIError)?.errorDescription ?? "加载失败"
+        }
+        isLoading = false
+    }
+
+    private func loadQuizState() async {
+        let today = Date().iso8601DateString
+        do {
+            let quiz: QuizResponse = try await apiClient.request(.quizToday)
+            // Check if already answered by fetching result
+            do {
+                let result: QuizResultResponse = try await apiClient.request(.quizResult(date: today))
+                if result.revealed {
+                    quizCardState = .revealed(result)
+                    AppSettings.shared.sharedQuizAnswered = true
+                } else if result.partnerAnswers != nil {
+                    quizCardState = .waitingReveal(date: today)
+                    startPolling(date: today)
+                } else {
+                    quizCardState = .answeredWaiting(date: today)
+                    startPolling(date: today)
+                }
+            } catch {
+                // No result yet — quiz is available
+                quizCardState = .available(quiz)
+                AppSettings.shared.sharedQuizAnswered = false
+            }
+            AppSettings.shared.sharedQuizType = quiz.quizType
+        } catch {
+            quizCardState = .unbound // fallback
+        }
+    }
+
+    func startPolling(date: String) {
+        stopPolling()
+        pollingTask = Task {
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(30))
+                guard !Task.isCancelled else { break }
+                do {
+                    let result: QuizResultResponse = try await apiClient.request(.quizResult(date: date))
+                    if result.revealed {
+                        quizCardState = .revealed(result)
+                        AppSettings.shared.sharedQuizAnswered = true
+                        WidgetCenter.shared.reloadAllTimelines()
+                        break
+                    } else if result.partnerAnswers != nil {
+                        quizCardState = .waitingReveal(date: date)
+                    }
+                } catch { }
+            }
+        }
+    }
+
+    func stopPolling() {
+        pollingTask?.cancel()
+        pollingTask = nil
+    }
+
+    var greetingEmoji: String {
+        let hour = Calendar.current.component(.hour, from: Date())
+        switch hour {
+        case 6..<12: return "🌅"
+        case 12..<18: return "☀️"
+        default: return "🌙"
+        }
+    }
+
+    var greetingText: String {
+        let hour = Calendar.current.component(.hour, from: Date())
+        switch hour {
+        case 6..<12: return "早上好"
+        case 12..<18: return "下午好"
+        default: return "晚上好"
+        }
+    }
+}
+```
 
 - [ ] **Step 2: Implement HomeView**
 
-HomeView switches between 5 states based on ViewModel state. Includes:
-- Greeting header with time-based emoji
-- Quiz card (state-dependent)
-- Mood sync section (both user's + partner's mood)
-- 3 stat cards at bottom (today score, streak, achievements)
-- Navigation to QuizAnswerView, MoodPicker sheet
+```swift
+import SwiftUI
 
-Refer to prototype screens: `kT6Sk`, `hSqE6`, `QHBTJ`, `rPGgW`, `VSDcp`
+struct HomeView: View {
+    @Environment(AppState.self) private var appState
+    @Environment(AppRouter.self) private var router
+    @State var viewModel: HomeViewModel
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 20) {
+                // Greeting
+                HStack {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("\(viewModel.greetingEmoji) \(viewModel.greetingText)")
+                            .font(.system(size: 28, weight: .bold))
+                            .foregroundStyle(AppColors.textPrimary)
+                        if let user = appState.currentUser {
+                            Text(user.nickname)
+                                .font(.system(size: 15))
+                                .foregroundStyle(AppColors.textSecondary)
+                        }
+                    }
+                    Spacer()
+                }
+                .padding(.top, 8)
+
+                // Offline banner
+                if !appState.isOnline {
+                    OfflineBanner()
+                }
+
+                // Quiz card
+                quizCard
+
+                // Mood section
+                if appState.isBound {
+                    moodSection
+                }
+
+                // Stats summary
+                if let overview = viewModel.overview {
+                    HStack(spacing: 12) {
+                        StatCard(value: "\(overview.todayScore)", label: "今日默契", color: AppColors.primaryPurple)
+                        StatCard(value: "\(overview.streakDays)天", label: "连续打卡", color: AppColors.success)
+                        StatCard(value: "\(overview.totalQuizzes)", label: "累计答题", color: AppColors.primaryPink)
+                    }
+                }
+            }
+            .padding(.horizontal, 20)
+        }
+        .gradientBackground()
+        .task { await viewModel.loadData() }
+        .onDisappear { viewModel.stopPolling() }
+        .refreshable { await viewModel.loadData() }
+    }
+
+    @ViewBuilder
+    private var quizCard: some View {
+        switch viewModel.quizCardState {
+        case .unbound:
+            CardView {
+                VStack(spacing: 16) {
+                    EmptyStateView(icon: "💑", message: "绑定伴侣后开始每日默契挑战")
+                    PrimaryButton("去绑定", icon: "link") {
+                        router.navigateHome(to: .bindPartner)
+                    }
+                }
+                .padding(20)
+            }
+        case .available:
+            CardView {
+                VStack(spacing: 12) {
+                    HStack {
+                        Text("🎯").font(.system(size: 28))
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("今日默契挑战").font(.system(size: 17, weight: .semibold))
+                            Text("5 道趣味问题，看看你们有多默契").font(.system(size: 13)).foregroundStyle(AppColors.textSecondary)
+                        }
+                        Spacer()
+                    }
+                    PrimaryButton("开始答题") {
+                        router.navigateHome(to: .quizAnswer)
+                    }
+                }
+                .padding(20)
+            }
+        case .answeredWaiting:
+            CardView {
+                VStack(spacing: 12) {
+                    Text("✅").font(.system(size: 36))
+                    Text("你已完成答题").font(.system(size: 17, weight: .semibold))
+                    Text("等待 TA 完成答题...").font(.system(size: 15)).foregroundStyle(AppColors.textSecondary)
+                    ProgressView().tint(AppColors.primaryPurple)
+                }
+                .padding(20)
+            }
+        case .waitingReveal(let date):
+            CardView {
+                VStack(spacing: 12) {
+                    Text("🎉").font(.system(size: 36))
+                    Text("双方已完成答题").font(.system(size: 17, weight: .semibold))
+                    Text("等待系统揭晓结果...").font(.system(size: 15)).foregroundStyle(AppColors.textSecondary)
+                    PrimaryButton("查看结果") {
+                        router.navigateHome(to: .quizResult(date: date))
+                    }
+                }
+                .padding(20)
+            }
+        case .revealed(let result):
+            CardView {
+                VStack(spacing: 12) {
+                    Text("💕").font(.system(size: 36))
+                    Text("\(result.score)%").font(.system(size: 40, weight: .bold)).foregroundStyle(AppColors.primaryPurple)
+                    Text("今日默契分").font(.system(size: 15)).foregroundStyle(AppColors.textSecondary)
+                    PrimaryButton("查看详情") {
+                        router.navigateHome(to: .quizResult(date: Date().iso8601DateString))
+                    }
+                }
+                .padding(20)
+            }
+        }
+    }
+
+    private var moodSection: some View {
+        CardView {
+            VStack(spacing: 12) {
+                HStack {
+                    Text("心情同步").font(.system(size: 17, weight: .semibold))
+                    Spacer()
+                    Button("更新心情") { router.activeSheet = .moodPicker }
+                        .font(.system(size: 13)).foregroundStyle(AppColors.primaryPurple)
+                }
+                HStack(spacing: 24) {
+                    // My mood
+                    VStack(spacing: 4) {
+                        Text(viewModel.myMood?.emoji ?? "😊").font(.system(size: 32))
+                        Text("我").font(.system(size: 11)).foregroundStyle(AppColors.textSecondary)
+                    }
+                    // Partner mood
+                    VStack(spacing: 4) {
+                        if let mood = viewModel.partnerMood {
+                            Text(mood.emoji).font(.system(size: 32))
+                        } else {
+                            Text("❓").font(.system(size: 32))
+                        }
+                        Text("TA").font(.system(size: 11)).foregroundStyle(AppColors.textSecondary)
+                    }
+                    Spacer()
+                    if let mood = viewModel.partnerMood, let text = mood.text, !text.isEmpty {
+                        Text(text)
+                            .font(.system(size: 13))
+                            .foregroundStyle(AppColors.textSecondary)
+                            .lineLimit(2)
+                    }
+                }
+            }
+            .padding(20)
+        }
+    }
+}
+```
 
 - [ ] **Step 3: Verify build and visual check in simulator**
 
@@ -1941,23 +2213,328 @@ final class QuizViewModelTests: XCTestCase {
 
 - [ ] **Step 3: Implement QuizViewModel**
 
-Manages quiz state machine: load questions → select answers → submit → wait → result. Parses `questions` JSON string into `[QuizQuestion]`. Handles 30s polling when waiting.
+```swift
+import SwiftUI
+import WidgetKit
+
+@MainActor @Observable
+class QuizViewModel {
+    var questions: [QuizQuestion] = []
+    var selectedAnswers: [Int: Int] = [:]  // questionIndex -> optionIndex
+    var currentQuestionIndex = 0
+    var isLoading = false
+    var isSubmitting = false
+    var errorMessage: String?
+    var quizId: Int64 = 0
+    var result: QuizResultResponse?
+
+    private let apiClient: APIClient
+
+    init(apiClient: APIClient) {
+        self.apiClient = apiClient
+    }
+
+    var allAnswered: Bool {
+        questions.count > 0 && selectedAnswers.count == questions.count
+    }
+
+    var progress: Double {
+        guard questions.count > 0 else { return 0 }
+        return Double(selectedAnswers.count) / Double(questions.count)
+    }
+
+    func selectAnswer(questionIndex: Int, optionIndex: Int) {
+        selectedAnswers[questionIndex] = optionIndex
+    }
+
+    func loadQuiz() async {
+        isLoading = true
+        do {
+            let quiz: QuizResponse = try await apiClient.request(.quizToday)
+            quizId = quiz.id
+            // Parse questions JSON string
+            if let data = quiz.questions.data(using: .utf8) {
+                questions = try JSONDecoder().decode([QuizQuestion].self, from: data)
+            }
+        } catch {
+            errorMessage = (error as? APIError)?.errorDescription ?? "加载题目失败"
+        }
+        isLoading = false
+    }
+
+    func submitAnswers() async -> Bool {
+        guard allAnswered else { return false }
+        isSubmitting = true
+        do {
+            let answersArray = (0..<questions.count).map { selectedAnswers[$0] ?? 0 }
+            let answersJson = try String(data: JSONEncoder().encode(answersArray), encoding: .utf8) ?? "[]"
+            try await apiClient.requestVoid(.submitAnswer(AnswerRequest(
+                quizId: quizId,
+                answers: answersJson,
+                partnerGuess: nil
+            )))
+            AppSettings.shared.sharedQuizAnswered = true
+            WidgetCenter.shared.reloadAllTimelines()
+            isSubmitting = false
+            return true
+        } catch {
+            errorMessage = (error as? APIError)?.errorDescription ?? "提交失败"
+            isSubmitting = false
+            return false
+        }
+    }
+
+    func loadResult(date: String) async {
+        isLoading = true
+        do {
+            result = try await apiClient.request(.quizResult(date: date))
+        } catch {
+            errorMessage = (error as? APIError)?.errorDescription ?? "加载结果失败"
+        }
+        isLoading = false
+    }
+}
+```
 
 - [ ] **Step 4: Implement QuizAnswerView**
 
-5-question flow with progress bar (`问题 N/5`), question text, 4 option rows. Navigation bar with back + close. Submit when all 5 answered.
+```swift
+import SwiftUI
+
+struct QuizAnswerView: View {
+    @Environment(AppRouter.self) private var router
+    @State var viewModel: QuizViewModel
+    let labels = ["A", "B", "C", "D"]
+
+    var body: some View {
+        VStack(spacing: 20) {
+            // Progress
+            HStack {
+                Text("问题 \(viewModel.currentQuestionIndex + 1)/\(viewModel.questions.count)")
+                    .font(.system(size: 15, weight: .semibold))
+                Spacer()
+            }
+            ProgressView(value: viewModel.progress)
+                .tint(AppColors.primaryPurple)
+
+            if viewModel.isLoading {
+                Spacer()
+                LoadingView()
+                Spacer()
+            } else if viewModel.currentQuestionIndex < viewModel.questions.count {
+                let question = viewModel.questions[viewModel.currentQuestionIndex]
+
+                // Question
+                Text(question.content)
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundStyle(AppColors.textPrimary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.top, 8)
+
+                // Options
+                VStack(spacing: 10) {
+                    ForEach(Array(question.options.enumerated()), id: \.offset) { index, option in
+                        QuizOptionRow(
+                            label: labels[index],
+                            text: option,
+                            isSelected: viewModel.selectedAnswers[viewModel.currentQuestionIndex] == index
+                        ) {
+                            viewModel.selectAnswer(questionIndex: viewModel.currentQuestionIndex, optionIndex: index)
+                        }
+                    }
+                }
+
+                Spacer()
+
+                // Navigation buttons
+                HStack(spacing: 12) {
+                    if viewModel.currentQuestionIndex > 0 {
+                        SecondaryButton("上一题") {
+                            viewModel.currentQuestionIndex -= 1
+                        }
+                    }
+                    if viewModel.currentQuestionIndex < viewModel.questions.count - 1 {
+                        PrimaryButton("下一题", isDisabled: viewModel.selectedAnswers[viewModel.currentQuestionIndex] == nil) {
+                            viewModel.currentQuestionIndex += 1
+                        }
+                    } else {
+                        PrimaryButton("提交答案", isDisabled: !viewModel.allAnswered || viewModel.isSubmitting) {
+                            Task {
+                                if await viewModel.submitAnswers() {
+                                    router.homePath.append(AppRoute.quizWaiting)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            if let error = viewModel.errorMessage {
+                Text(error).font(.system(size: 13)).foregroundStyle(AppColors.error)
+            }
+        }
+        .padding(20)
+        .gradientBackground()
+        .navigationBarTitleDisplayMode(.inline)
+        .task { await viewModel.loadQuiz() }
+    }
+}
+```
 
 Refer to prototype: `noWcd`
 
 - [ ] **Step 5: Implement QuizWaitingView**
 
-Shows completion checkmark, partner name + "尚未作答" status, "返回首页" button.
+```swift
+import SwiftUI
+
+struct QuizWaitingView: View {
+    @Environment(AppState.self) private var appState
+    @Environment(AppRouter.self) private var router
+
+    var body: some View {
+        VStack(spacing: 24) {
+            Spacer()
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 64))
+                .foregroundStyle(AppColors.success)
+            Text("答题完成！")
+                .font(.system(size: 24, weight: .bold))
+                .foregroundStyle(AppColors.textPrimary)
+
+            CardView {
+                VStack(spacing: 12) {
+                    HStack {
+                        Text("我").font(.system(size: 15, weight: .medium))
+                        Spacer()
+                        Text("已完成 ✅").foregroundStyle(AppColors.success).font(.system(size: 13))
+                    }
+                    Divider()
+                    HStack {
+                        Text(appState.currentCouple?.partnerNickname ?? "TA")
+                            .font(.system(size: 15, weight: .medium))
+                        Spacer()
+                        HStack(spacing: 4) {
+                            ProgressView().controlSize(.small)
+                            Text("尚未作答").font(.system(size: 13)).foregroundStyle(AppColors.textSecondary)
+                        }
+                    }
+                }
+                .padding(20)
+            }
+
+            Text("对方完成后即可查看结果")
+                .font(.system(size: 13))
+                .foregroundStyle(AppColors.textSecondary)
+
+            Spacer()
+
+            SecondaryButton("返回首页") {
+                router.homePath = NavigationPath()
+            }
+        }
+        .padding(20)
+        .gradientBackground()
+        .navigationBarBackButtonHidden()
+    }
+}
+```
 
 Refer to prototype: `zWolL`
 
 - [ ] **Step 6: Implement QuizResultView**
 
-Score circle (0-100), answer comparison table (Q1-Q5 with 我/TA columns, match highlight), "去看看 TA 的心情" link.
+```swift
+import SwiftUI
+
+struct QuizResultView: View {
+    @Environment(AppRouter.self) private var router
+    @State var viewModel: QuizViewModel
+    let date: String
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 24) {
+                if viewModel.isLoading {
+                    LoadingView()
+                } else if let result = viewModel.result {
+                    // Score circle
+                    ZStack {
+                        Circle()
+                            .stroke(Color.gray.opacity(0.2), lineWidth: 8)
+                            .frame(width: 120, height: 120)
+                        Circle()
+                            .trim(from: 0, to: Double(result.score) / 100.0)
+                            .stroke(AppColors.primaryGradient, style: StrokeStyle(lineWidth: 8, lineCap: .round))
+                            .frame(width: 120, height: 120)
+                            .rotationEffect(.degrees(-90))
+                        VStack(spacing: 2) {
+                            Text("\(result.score)%")
+                                .font(.system(size: 32, weight: .bold))
+                                .foregroundStyle(AppColors.primaryPurple)
+                            Text("默契分")
+                                .font(.system(size: 13))
+                                .foregroundStyle(AppColors.textSecondary)
+                        }
+                    }
+
+                    // Answer comparison
+                    CardView {
+                        VStack(spacing: 0) {
+                            // Header
+                            HStack {
+                                Text("题目").font(.system(size: 13, weight: .medium)).frame(maxWidth: .infinity, alignment: .leading)
+                                Text("我").font(.system(size: 13, weight: .medium)).frame(width: 40)
+                                Text("TA").font(.system(size: 13, weight: .medium)).frame(width: 40)
+                                Text("").frame(width: 24)
+                            }
+                            .foregroundStyle(AppColors.textSecondary)
+                            .padding(.horizontal, 16).padding(.vertical, 8)
+
+                            Divider()
+
+                            // Parse answers
+                            let myAnswers = (try? JSONDecoder().decode([Int].self, from: result.myAnswers.data(using: .utf8) ?? Data())) ?? []
+                            let partnerAnswers = (try? JSONDecoder().decode([Int].self, from: (result.partnerAnswers ?? "[]").data(using: .utf8) ?? Data())) ?? []
+                            let labels = ["A", "B", "C", "D"]
+
+                            ForEach(0..<myAnswers.count, id: \.self) { i in
+                                let match = i < partnerAnswers.count && myAnswers[i] == partnerAnswers[i]
+                                HStack {
+                                    Text("Q\(i + 1)").font(.system(size: 15)).frame(maxWidth: .infinity, alignment: .leading)
+                                    Text(labels[safe: myAnswers[i]] ?? "?").font(.system(size: 15)).frame(width: 40)
+                                    Text(i < partnerAnswers.count ? (labels[safe: partnerAnswers[i]] ?? "?") : "-").font(.system(size: 15)).frame(width: 40)
+                                    Image(systemName: match ? "checkmark.circle.fill" : "xmark.circle.fill")
+                                        .foregroundStyle(match ? AppColors.success : AppColors.error)
+                                        .frame(width: 24)
+                                }
+                                .padding(.horizontal, 16).padding(.vertical, 10)
+                                if i < myAnswers.count - 1 { Divider() }
+                            }
+                        }
+                    }
+
+                    // Action
+                    PrimaryButton("去看看 TA 的心情") {
+                        router.activeSheet = .moodPicker
+                    }
+                }
+            }
+            .padding(20)
+        }
+        .gradientBackground()
+        .navigationTitle("答题结果")
+        .task { await viewModel.loadResult(date: date) }
+    }
+}
+
+// Safe array subscript helper
+extension Array {
+    subscript(safe index: Int) -> Element? {
+        indices.contains(index) ? self[index] : nil
+    }
+}
+```
 
 Refer to prototype: `azWdO`
 
@@ -1981,11 +2558,15 @@ git commit -m "feat: implement Quiz module with answer flow and result display"
 - [ ] **Step 1: Implement MoodViewModel**
 
 ```swift
-@Observable
+import SwiftUI
+import WidgetKit
+
+@MainActor @Observable
 class MoodViewModel {
     var selectedEmoji: String?
     var moodText: String = ""
     var isLoading = false
+    var errorMessage: String?
     var myMood: MoodResponse?
     var partnerMood: MoodResponse?
 
@@ -1995,14 +2576,115 @@ class MoodViewModel {
 
     init(apiClient: APIClient) { self.apiClient = apiClient }
 
-    func updateMood() async { /* POST /api/v1/mood, cache response locally */ }
-    func loadPartnerMood() async { /* GET /api/v1/mood/partner */ }
+    func updateMood() async -> Bool {
+        guard let emoji = selectedEmoji else { return false }
+        isLoading = true
+        do {
+            let response: MoodResponse = try await apiClient.request(
+                .updateMood(MoodUpdateRequest(emoji: emoji, text: moodText.isEmpty ? nil : moodText))
+            )
+            myMood = response
+            // Update widget
+            AppSettings.shared.sharedPartnerMoodEmoji = emoji
+            WidgetCenter.shared.reloadAllTimelines()
+            isLoading = false
+            return true
+        } catch {
+            errorMessage = (error as? APIError)?.errorDescription ?? "更新心情失败"
+            isLoading = false
+            return false
+        }
+    }
+
+    func loadPartnerMood() async {
+        do {
+            partnerMood = try await apiClient.request(.partnerMood)
+            if let mood = partnerMood {
+                AppSettings.shared.sharedPartnerMoodEmoji = mood.emoji
+                AppSettings.shared.sharedPartnerMoodText = mood.text
+            }
+        } catch { }
+    }
 }
 ```
 
 - [ ] **Step 2: Implement MoodPickerView**
 
-Sheet with: partner mood display, 3x3 EmojiGrid, text input (50 char limit), "更新心情" PrimaryButton.
+```swift
+import SwiftUI
+
+struct MoodPickerView: View {
+    @Environment(\.dismiss) private var dismiss
+    @State var viewModel: MoodViewModel
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 24) {
+                    // Partner mood display
+                    if let mood = viewModel.partnerMood {
+                        CardView {
+                            VStack(spacing: 8) {
+                                Text("TA 的心情").font(.system(size: 13)).foregroundStyle(AppColors.textSecondary)
+                                Text(mood.emoji).font(.system(size: 40))
+                                if let text = mood.text, !text.isEmpty {
+                                    Text(text).font(.system(size: 15)).foregroundStyle(AppColors.textPrimary)
+                                }
+                                if let time = Date.fromISO8601(mood.updatedAt) {
+                                    Text(time.relativeTimeString).font(.system(size: 11)).foregroundStyle(AppColors.textSecondary)
+                                }
+                            }
+                            .padding(20)
+                        }
+                    }
+
+                    // Emoji grid
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("选择你的心情").font(.system(size: 17, weight: .semibold))
+                        EmojiGrid(emojis: viewModel.emojis, selected: $viewModel.selectedEmoji)
+                    }
+
+                    // Text input
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("心情短语（选填）").font(.system(size: 13)).foregroundStyle(AppColors.textSecondary)
+                        TextField("今天想说点什么...", text: $viewModel.moodText)
+                            .padding(12)
+                            .background(.white.opacity(0.8))
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                            .onChange(of: viewModel.moodText) { _, new in
+                                if new.count > 50 { viewModel.moodText = String(new.prefix(50)) }
+                            }
+                        Text("\(viewModel.moodText.count)/50")
+                            .font(.system(size: 11))
+                            .foregroundStyle(AppColors.textSecondary)
+                            .frame(maxWidth: .infinity, alignment: .trailing)
+                    }
+
+                    if let error = viewModel.errorMessage {
+                        Text(error).font(.system(size: 13)).foregroundStyle(AppColors.error)
+                    }
+
+                    PrimaryButton("更新心情", isDisabled: viewModel.selectedEmoji == nil || viewModel.isLoading) {
+                        Task {
+                            if await viewModel.updateMood() { dismiss() }
+                        }
+                    }
+                }
+                .padding(20)
+            }
+            .gradientBackground()
+            .navigationTitle("心情同步")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("关闭") { dismiss() }
+                }
+            }
+            .task { await viewModel.loadPartnerMood() }
+        }
+    }
+}
+```
 
 Refer to prototype: `7ZH9p`
 
@@ -2025,11 +2707,125 @@ git commit -m "feat: implement Mood module with emoji picker"
 
 - [ ] **Step 1: Implement StatsViewModel**
 
-Loads weekly data (for Swift Charts bar chart), overview stats, and achievement list.
+```swift
+import SwiftUI
+
+@MainActor @Observable
+class StatsViewModel {
+    var weekly: WeeklyResponse?
+    var overview: OverviewResponse?
+    var achievements: [AchievementResponse] = []
+    var isLoading = false
+    var errorMessage: String?
+
+    private let apiClient: APIClient
+
+    init(apiClient: APIClient) { self.apiClient = apiClient }
+
+    func loadData() async {
+        isLoading = true
+        do {
+            async let weeklyResult: WeeklyResponse = apiClient.request(.weekly)
+            async let overviewResult: OverviewResponse = apiClient.request(.overview)
+            async let achievementsResult: [AchievementResponse] = apiClient.request(.achievements)
+            weekly = try await weeklyResult
+            overview = try await overviewResult
+            achievements = try await achievementsResult
+        } catch {
+            errorMessage = (error as? APIError)?.errorDescription ?? "加载统计失败"
+        }
+        isLoading = false
+    }
+}
+```
 
 - [ ] **Step 2: Implement StatsView**
 
-Layout: page title "默契统计" + week/all toggle, bar chart (Swift Charts `BarMark`), 3 StatCards, achievement badge grid.
+```swift
+import SwiftUI
+import Charts
+
+struct StatsView: View {
+    @State var viewModel: StatsViewModel
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 20) {
+                Text("默契统计")
+                    .font(.system(size: 28, weight: .bold))
+                    .foregroundStyle(AppColors.textPrimary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                // Weekly chart
+                if let weekly = viewModel.weekly {
+                    CardView {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("本周趋势").font(.system(size: 17, weight: .semibold))
+                            Chart(weekly.scores, id: \.date) { day in
+                                BarMark(
+                                    x: .value("日期", String(day.date.suffix(5))),
+                                    y: .value("分数", day.score)
+                                )
+                                .foregroundStyle(AppColors.primaryGradient)
+                                .cornerRadius(4)
+                            }
+                            .frame(height: 180)
+                            .chartYScale(domain: 0...100)
+                        }
+                        .padding(20)
+                    }
+                }
+
+                // Stat cards
+                if let overview = viewModel.overview {
+                    HStack(spacing: 12) {
+                        StatCard(value: String(format: "%.0f", overview.avgScore), label: "平均默契分", color: AppColors.primaryPurple)
+                        StatCard(value: "\(overview.streakDays)天", label: "连续天数", color: AppColors.success)
+                        StatCard(value: "\(overview.totalQuizzes)", label: "累计答题", color: AppColors.primaryPink)
+                    }
+                }
+
+                // Achievements
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("成就徽章").font(.system(size: 17, weight: .semibold))
+                    if viewModel.achievements.isEmpty {
+                        EmptyStateView(icon: "🏆", message: "继续答题解锁更多成就")
+                    } else {
+                        let columns = Array(repeating: GridItem(.flexible()), count: 4)
+                        LazyVGrid(columns: columns, spacing: 16) {
+                            ForEach(viewModel.achievements, id: \.type) { achievement in
+                                AchievementBadge(
+                                    name: achievement.displayName,
+                                    icon: achievementIcon(achievement.type),
+                                    subtitle: achievement.unlocked ? "已解锁" : "未解锁",
+                                    unlocked: achievement.unlocked
+                                )
+                            }
+                        }
+                    }
+                }
+
+                if viewModel.isLoading { LoadingView() }
+            }
+            .padding(.horizontal, 20)
+        }
+        .gradientBackground()
+        .task { await viewModel.loadData() }
+        .refreshable { await viewModel.loadData() }
+    }
+
+    private func achievementIcon(_ type: String) -> String {
+        switch type {
+        case "FIRST_QUIZ": return "🎯"
+        case "STREAK_7": return "🔥"
+        case "STREAK_30": return "💎"
+        case "PERFECT_SCORE": return "💯"
+        case "QUIZ_50": return "📚"
+        default: return "🏅"
+        }
+    }
+}
+```
 
 Refer to prototype: `uyP5a`
 
@@ -2053,17 +2849,195 @@ git commit -m "feat: implement Stats module with charts and achievements"
 
 - [ ] **Step 1: Implement CoupleViewModel**
 
-Handles bind (POST invite code), unbind (DELETE + confirmation), and ShareLink for invite code.
+```swift
+import SwiftUI
+
+@MainActor @Observable
+class CoupleViewModel {
+    var partnerCode: String = ""
+    var isLoading = false
+    var errorMessage: String?
+
+    private let apiClient: APIClient
+    private let appState: AppState
+
+    init(apiClient: APIClient, appState: AppState) {
+        self.apiClient = apiClient
+        self.appState = appState
+    }
+
+    var myInviteCode: String {
+        appState.currentUser?.inviteCode ?? ""
+    }
+
+    func bind() async -> Bool {
+        guard partnerCode.count == 6 else { return false }
+        isLoading = true
+        errorMessage = nil
+        do {
+            let couple: CoupleResponse = try await apiClient.request(.bind(BindRequest(inviteCode: partnerCode)))
+            appState.coupleState = .bound(couple)
+            isLoading = false
+            return true
+        } catch {
+            errorMessage = (error as? APIError)?.errorDescription ?? "绑定失败"
+            isLoading = false
+            return false
+        }
+    }
+
+    func unbind() async -> Bool {
+        isLoading = true
+        do {
+            try await apiClient.requestVoid(.unbind)
+            appState.coupleState = .unbound
+            isLoading = false
+            return true
+        } catch {
+            errorMessage = (error as? APIError)?.errorDescription ?? "解绑失败"
+            isLoading = false
+            return false
+        }
+    }
+}
+```
 
 - [ ] **Step 2: Implement BindPartnerView**
 
-Shows my invite code (large text, copy + share buttons), divider "或", input field for partner's code, "绑定 TA" button.
+```swift
+import SwiftUI
+
+struct BindPartnerView: View {
+    @Environment(AppRouter.self) private var router
+    @State var viewModel: CoupleViewModel
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 24) {
+                // My invite code
+                CardView {
+                    VStack(spacing: 12) {
+                        Text("我的邀请码").font(.system(size: 13)).foregroundStyle(AppColors.textSecondary)
+                        Text(viewModel.myInviteCode)
+                            .font(.system(size: 32, weight: .bold, design: .monospaced))
+                            .foregroundStyle(AppColors.primaryPurple)
+                            .kerning(4)
+
+                        HStack(spacing: 16) {
+                            Button {
+                                UIPasteboard.general.string = viewModel.myInviteCode
+                            } label: {
+                                Label("复制", systemImage: "doc.on.doc").font(.system(size: 13))
+                            }
+                            ShareLink(item: "来 UniBond 和我一起答题吧！我的邀请码：\(viewModel.myInviteCode)") {
+                                Label("分享", systemImage: "square.and.arrow.up").font(.system(size: 13))
+                            }
+                        }
+                        .foregroundStyle(AppColors.primaryPurple)
+                    }
+                    .padding(20)
+                }
+
+                // Divider
+                HStack {
+                    Rectangle().fill(AppColors.textSecondary.opacity(0.3)).frame(height: 0.5)
+                    Text("或").font(.system(size: 13)).foregroundStyle(AppColors.textSecondary)
+                    Rectangle().fill(AppColors.textSecondary.opacity(0.3)).frame(height: 0.5)
+                }
+
+                // Input partner code
+                CardView {
+                    VStack(spacing: 12) {
+                        Text("输入对方邀请码").font(.system(size: 15, weight: .medium))
+                        TextField("6 位邀请码", text: $viewModel.partnerCode)
+                            .font(.system(size: 20, weight: .semibold, design: .monospaced))
+                            .multilineTextAlignment(.center)
+                            .textInputAutocapitalization(.characters)
+                            .padding(12)
+                            .background(.white)
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                            .overlay(RoundedRectangle(cornerRadius: 12).stroke(AppColors.primaryPurple.opacity(0.3), lineWidth: 1))
+                            .onChange(of: viewModel.partnerCode) { _, new in
+                                viewModel.partnerCode = String(new.prefix(6)).uppercased()
+                            }
+
+                        if let error = viewModel.errorMessage {
+                            Text(error).font(.system(size: 13)).foregroundStyle(AppColors.error)
+                        }
+
+                        PrimaryButton("绑定 TA", icon: "link", isDisabled: viewModel.partnerCode.count != 6 || viewModel.isLoading) {
+                            Task {
+                                if await viewModel.bind() {
+                                    router.homePath = NavigationPath()
+                                }
+                            }
+                        }
+                    }
+                    .padding(20)
+                }
+            }
+            .padding(20)
+        }
+        .gradientBackground()
+        .navigationTitle("绑定伴侣")
+    }
+}
+```
 
 Refer to prototype: `jNnXr`
 
 - [ ] **Step 3: Implement UnbindConfirmView**
 
-Confirmation sheet with broken heart icon, warning text, "确认解绑" destructive button, "再想想" cancel button.
+```swift
+import SwiftUI
+
+struct UnbindConfirmView: View {
+    @Environment(\.dismiss) private var dismiss
+    @State var viewModel: CoupleViewModel
+
+    var body: some View {
+        VStack(spacing: 24) {
+            Spacer()
+            Text("💔").font(.system(size: 56))
+            Text("确认解绑？")
+                .font(.system(size: 20, weight: .bold))
+                .foregroundStyle(AppColors.textPrimary)
+            Text("解绑后，你们的答题记录和统计数据将被清除，此操作不可恢复。")
+                .font(.system(size: 15))
+                .foregroundStyle(AppColors.textSecondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 20)
+
+            if let error = viewModel.errorMessage {
+                Text(error).font(.system(size: 13)).foregroundStyle(AppColors.error)
+            }
+
+            Spacer()
+
+            VStack(spacing: 12) {
+                Button {
+                    Task {
+                        if await viewModel.unbind() { dismiss() }
+                    }
+                } label: {
+                    Text("确认解绑")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(AppColors.error)
+                        .clipShape(RoundedRectangle(cornerRadius: 24))
+                }
+                .disabled(viewModel.isLoading)
+
+                SecondaryButton("再想想") { dismiss() }
+            }
+        }
+        .padding(32)
+        .gradientBackground()
+    }
+}
+```
 
 Refer to prototype: `vIsnc`
 
@@ -2086,13 +3060,233 @@ git commit -m "feat: implement Couple module with bind/unbind flow"
 
 - [ ] **Step 1: Implement ProfileViewModel**
 
-Handles: profile edit (nickname), logout (clear tokens + reset AppState), account deletion (DELETE with confirmation), couple info display.
+```swift
+import SwiftUI
+
+@MainActor @Observable
+class ProfileViewModel {
+    var nickname: String = ""
+    var isEditing = false
+    var isLoading = false
+    var errorMessage: String?
+    var showDeleteConfirm = false
+
+    private let apiClient: APIClient
+    private let appState: AppState
+
+    init(apiClient: APIClient, appState: AppState) {
+        self.apiClient = apiClient
+        self.appState = appState
+        self.nickname = appState.currentUser?.nickname ?? ""
+    }
+
+    func updateNickname() async {
+        guard !nickname.isEmpty else { return }
+        isLoading = true
+        do {
+            let user: UserResponse = try await apiClient.request(
+                .updateProfile(ProfileUpdateRequest(nickname: nickname, avatarUrl: nil))
+            )
+            appState.authState = .authenticated(user)
+            isEditing = false
+        } catch {
+            errorMessage = (error as? APIError)?.errorDescription ?? "更新失败"
+        }
+        isLoading = false
+    }
+
+    func logout() async {
+        if let refreshToken = KeychainManager.shared.refreshToken {
+            try? await apiClient.requestVoid(.logout(refreshToken))
+        }
+        appState.logout()
+        AppSettings.shared.clearAll()
+    }
+
+    func deleteAccount() async {
+        isLoading = true
+        do {
+            try await apiClient.requestVoid(.deleteAccount)
+            appState.logout()
+            AppSettings.shared.clearAll()
+        } catch {
+            errorMessage = (error as? APIError)?.errorDescription ?? "删除账号失败"
+        }
+        isLoading = false
+    }
+
+    var daysTogether: Int? {
+        guard let couple = appState.currentCouple,
+              let date = Date.fromISO8601(couple.bindAt) else { return nil }
+        return Calendar.current.dateComponents([.day], from: date, to: Date()).day
+    }
+}
+```
 
 - [ ] **Step 2: Implement ProfileView**
 
-Two states:
-- **Bound**: avatar + name + email, couple info card (partner name, days together, invite code), settings list (notifications, privacy, feedback, about, delete account), logout button
-- **Unbound**: avatar + name + email, bind CTA card, simplified settings list, logout button
+```swift
+import SwiftUI
+
+struct ProfileView: View {
+    @Environment(AppState.self) private var appState
+    @Environment(AppRouter.self) private var router
+    @State var viewModel: ProfileViewModel
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 20) {
+                // Avatar + Name
+                VStack(spacing: 12) {
+                    Circle()
+                        .fill(AppColors.primaryGradient)
+                        .frame(width: 72, height: 72)
+                        .overlay(
+                            Text(String(appState.currentUser?.nickname.prefix(1) ?? "U"))
+                                .font(.system(size: 28, weight: .bold))
+                                .foregroundStyle(.white)
+                        )
+
+                    if viewModel.isEditing {
+                        HStack {
+                            TextField("昵称", text: $viewModel.nickname)
+                                .textFieldStyle(.roundedBorder)
+                                .frame(width: 150)
+                            Button("保存") { Task { await viewModel.updateNickname() } }
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundStyle(AppColors.primaryPurple)
+                        }
+                    } else {
+                        HStack(spacing: 6) {
+                            Text(appState.currentUser?.nickname ?? "")
+                                .font(.system(size: 20, weight: .semibold))
+                            Button { viewModel.isEditing = true } label: {
+                                Image(systemName: "pencil").font(.system(size: 13)).foregroundStyle(AppColors.textSecondary)
+                            }
+                        }
+                    }
+
+                    if let email = appState.currentUser?.email {
+                        Text(email).font(.system(size: 13)).foregroundStyle(AppColors.textSecondary)
+                    }
+                }
+                .padding(.top, 12)
+
+                // Couple info (bound only)
+                if appState.isBound, let couple = appState.currentCouple {
+                    CardView {
+                        VStack(spacing: 12) {
+                            HStack {
+                                Text("💑").font(.system(size: 24))
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("与 \(couple.partnerNickname) 已绑定")
+                                        .font(.system(size: 15, weight: .medium))
+                                    if let days = viewModel.daysTogether {
+                                        Text("在一起 \(days) 天")
+                                            .font(.system(size: 13))
+                                            .foregroundStyle(AppColors.textSecondary)
+                                    }
+                                }
+                                Spacer()
+                            }
+                            HStack {
+                                Text("邀请码：\(appState.currentUser?.inviteCode ?? "")")
+                                    .font(.system(size: 13, design: .monospaced))
+                                    .foregroundStyle(AppColors.textSecondary)
+                                Spacer()
+                            }
+                        }
+                        .padding(16)
+                    }
+                } else {
+                    // Unbound — bind CTA
+                    CardView {
+                        VStack(spacing: 12) {
+                            Text("💕").font(.system(size: 32))
+                            Text("绑定伴侣，开启默契之旅")
+                                .font(.system(size: 15))
+                                .foregroundStyle(AppColors.textSecondary)
+                            PrimaryButton("去绑定", icon: "link") {
+                                router.profilePath.append(AppRoute.bindPartner)
+                            }
+                        }
+                        .padding(16)
+                    }
+                }
+
+                // Settings list
+                CardView {
+                    VStack(spacing: 0) {
+                        settingsRow(icon: "bell.fill", title: "通知设置") { }
+                        Divider().padding(.leading, 44)
+
+                        if appState.isBound {
+                            settingsRow(icon: "lock.shield.fill", title: "隐私") { }
+                            Divider().padding(.leading, 44)
+                            settingsRow(icon: "bubble.left.fill", title: "意见反馈") { }
+                            Divider().padding(.leading, 44)
+                        }
+
+                        settingsRow(icon: "info.circle.fill", title: "关于 UniBond") { }
+                        Divider().padding(.leading, 44)
+
+                        if appState.isBound {
+                            settingsRow(icon: "heart.slash.fill", title: "解绑伴侣", color: .orange) {
+                                router.activeSheet = .unbindConfirm
+                            }
+                            Divider().padding(.leading, 44)
+                        }
+
+                        settingsRow(icon: "trash.fill", title: "删除账号", color: AppColors.error) {
+                            viewModel.showDeleteConfirm = true
+                        }
+                    }
+                }
+
+                if let error = viewModel.errorMessage {
+                    Text(error).font(.system(size: 13)).foregroundStyle(AppColors.error)
+                }
+
+                // Logout
+                SecondaryButton("退出登录") {
+                    Task { await viewModel.logout() }
+                }
+                .padding(.top, 8)
+            }
+            .padding(.horizontal, 20)
+        }
+        .gradientBackground()
+        .alert("确认删除账号？", isPresented: $viewModel.showDeleteConfirm) {
+            Button("取消", role: .cancel) { }
+            Button("删除", role: .destructive) {
+                Task { await viewModel.deleteAccount() }
+            }
+        } message: {
+            Text("删除后所有数据将被永久清除，无法恢复。")
+        }
+    }
+
+    private func settingsRow(icon: String, title: String, color: Color = AppColors.textPrimary, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                Image(systemName: icon)
+                    .font(.system(size: 16))
+                    .foregroundStyle(color)
+                    .frame(width: 24)
+                Text(title)
+                    .font(.system(size: 15))
+                    .foregroundStyle(color)
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12))
+                    .foregroundStyle(AppColors.textSecondary)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+        }
+    }
+}
+```
 
 Refer to prototypes: `XiJiH` (bound), `tgTZX` (unbound)
 
@@ -2119,7 +3313,20 @@ App entry point:
 - Injects into environment
 - Root view switches: `LoginView` vs `MainTabView` based on `appState.authState`
 - `MainTabView` has 3 tabs with `NavigationStack` each
-- Handle `scenePhase` for timezone check
+- Handle `scenePhase` for timezone check: when `.active`, compare `TimeZone.current.identifier` with `AppSettings.shared.lastTimezone`; if different, call `PUT /api/v1/user/profile` with new timezone and update cached value
+
+```swift
+// In UniBondApp, add to .onChange(of: scenePhase):
+if scenePhase == .active, appState.isAuthenticated {
+    let tz = TimeZone.current.identifier
+    if tz != AppSettings.shared.lastTimezone {
+        AppSettings.shared.lastTimezone = tz
+        Task {
+            try? await apiClient.requestVoid(.updateProfile(ProfileUpdateRequest(nickname: nil, avatarUrl: nil)))
+        }
+    }
+}
+```
 - Register for push notifications on launch
 - Implement `UNUserNotificationCenterDelegate` for notification routing
 
