@@ -34,3 +34,7 @@ replay_pid*
 # Xcode
 build/
 DerivedData/
+
+# Environment secrets
+.env
+*.p8
