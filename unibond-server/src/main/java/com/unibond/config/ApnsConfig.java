@@ -13,16 +13,29 @@ import java.io.File;
 public class ApnsConfig {
     @Bean
     public ApnsClient apnsClient(
-            @Value("${app.apns.key-path}") String keyPath,
-            @Value("${app.apns.key-id}") String keyId,
-            @Value("${app.apns.team-id}") String teamId,
-            @Value("${app.apns.production}") boolean production) throws Exception {
-        return new ApnsClientBuilder()
-            .setApnsServer(production
-                ? ApnsClientBuilder.PRODUCTION_APNS_HOST
-                : ApnsClientBuilder.DEVELOPMENT_APNS_HOST)
-            .setSigningKey(com.eatthepath.pushy.apns.auth.ApnsSigningKey.loadFromPkcs8File(
-                new File(keyPath), teamId, keyId))
-            .build();
+            @Value("${app.apns.key-path:}") String keyPath,
+            @Value("${app.apns.key-id:}") String keyId,
+            @Value("${app.apns.team-id:}") String teamId,
+            @Value("${app.apns.production:false}") boolean production) {
+        if (keyPath == null || keyPath.isBlank() || keyId == null || keyId.isBlank()) {
+            return null;
+        }
+        
+        File keyFile = new File(keyPath);
+        if (!keyFile.exists()) {
+            return null;
+        }
+
+        try {
+            return new ApnsClientBuilder()
+                .setApnsServer(production
+                    ? ApnsClientBuilder.PRODUCTION_APNS_HOST
+                    : ApnsClientBuilder.DEVELOPMENT_APNS_HOST)
+                .setSigningKey(com.eatthepath.pushy.apns.auth.ApnsSigningKey.loadFromPkcs8File(
+                    keyFile, teamId, keyId))
+                .build();
+        } catch (Exception e) {
+            return null;
+        }
     }
 }
