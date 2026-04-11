@@ -1,12 +1,13 @@
 spring:
   datasource:
-    url: jdbc:postgresql://localhost:5432/unibond
+    url: jdbc:postgresql://39.105.121.125:5432/unibond
     username: unibond
-    password: unibond_dev
+    password: hFA1fzIvbistaZ3xKzStnQ6WXUA77LM
   data:
     redis:
-      host: localhost
+      host: 39.105.121.125
       port: 6379
+      password: 7XEh3z07iWGeCZRDsstaHsoO5q4peQX
   mail:
     host: smtp.qq.com
     port: 465
