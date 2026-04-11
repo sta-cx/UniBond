@@ -12,16 +12,23 @@ public class User {
 
     private String email;
     private String nickname;
+    @Column(name = "avatar_url")
     private String avatarUrl;
 
     @Enumerated(EnumType.STRING)
+    @Column(name = "auth_provider")
     private AuthProvider authProvider;
 
+    @Column(name = "apple_sub")
     private String appleSub;
+    @Column(name = "partner_id")
     private Long partnerId;
+    @Column(name = "invite_code")
     private String inviteCode;
+    @Column(name = "device_token")
     private String deviceToken;
     private String timezone;
+    @Column(name = "created_at")
     private Instant createdAt;
 
     @PrePersist

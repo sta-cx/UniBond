@@ -14,9 +14,11 @@ public class DailyQuiz {
 
     @Column(name = "quiz_date")
     private LocalDate date;
+    @Column(name = "couple_id")
     private Long coupleId;
 
     @Enumerated(EnumType.STRING)
+    @Column(name = "quiz_type")
     private QuizType quizType;
 
     private String theme;
@@ -25,11 +27,14 @@ public class DailyQuiz {
     private String questions;
 
     @Enumerated(EnumType.STRING)
+    @Column(name = "generation_source")
     private GenerationSource generationSource;
 
     @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "prompt_context")
     private String promptContext;
 
+    @Column(name = "created_at")
     private Instant createdAt;
 
     @PrePersist void prePersist() { if (createdAt == null) createdAt = Instant.now(); }

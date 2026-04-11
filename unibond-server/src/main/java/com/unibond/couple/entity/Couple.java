@@ -11,9 +11,13 @@ public class Couple {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Column(name = "user_a_id")
     private Long userAId;
+    @Column(name = "user_b_id")
     private Long userBId;
+    @Column(name = "anniversary_date")
     private LocalDate anniversaryDate;
+    @Column(name = "bind_at")
     private Instant bindAt;
 
     @Enumerated(EnumType.STRING)

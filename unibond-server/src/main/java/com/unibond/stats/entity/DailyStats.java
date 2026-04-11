@@ -4,11 +4,14 @@ import java.time.LocalDate;
 @Entity @Table(name = "daily_stats")
 @IdClass(DailyStatsId.class)
 public class DailyStats {
-    @Id private Long coupleId;
+    @Id @Column(name = "couple_id") private Long coupleId;
     @Id @Column(name = "stat_date") private LocalDate statDate;
+    @Column(name = "match_score")
     private int matchScore;
+    @Column(name = "streak_days")
     private int streakDays;
     @Enumerated(EnumType.STRING)
+    @Column(name = "quiz_type_played")
     private com.unibond.quiz.entity.QuizType quizTypePlayed;
 
     public Long getCoupleId() { return coupleId; }

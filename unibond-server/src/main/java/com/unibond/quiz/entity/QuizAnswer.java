@@ -12,17 +12,22 @@ public class QuizAnswer {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Column(name = "daily_quiz_id")
     private Long dailyQuizId;
+    @Column(name = "user_id")
     private Long userId;
+    @Column(name = "couple_id")
     private Long coupleId;
 
     @JdbcTypeCode(SqlTypes.JSON)
     private String answers;
 
     @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "partner_guess")
     private String partnerGuess;
 
     private Integer score;
+    @Column(name = "completed_at")
     private Instant completedAt;
     private Boolean revealed;
 

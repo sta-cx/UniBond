@@ -8,10 +8,15 @@ import java.time.Instant;
 public class MoodStatus {
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+    @Column(name = "user_id")
     private Long userId;
+    @Column(name = "couple_id")
     private Long coupleId;
+    @Column(name = "mood_emoji")
     private String moodEmoji;
+    @Column(name = "mood_text")
     private String moodText;
+    @Column(name = "updated_at")
     private Instant updatedAt;
 
     @PrePersist @PreUpdate

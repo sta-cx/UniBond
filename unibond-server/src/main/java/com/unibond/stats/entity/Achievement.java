@@ -5,8 +5,10 @@ import java.time.Instant;
 public class Achievement {
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+    @Column(name = "couple_id")
     private Long coupleId;
     private String type;
+    @Column(name = "unlocked_at")
     private Instant unlockedAt;
     @PrePersist void prePersist() { if (unlockedAt == null) unlockedAt = Instant.now(); }
 

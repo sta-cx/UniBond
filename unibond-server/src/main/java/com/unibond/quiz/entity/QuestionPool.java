@@ -14,6 +14,7 @@ public class QuestionPool {
     private String category;
 
     @Enumerated(EnumType.STRING)
+    @Column(name = "quiz_type")
     private QuizType quizType;
 
     private String question;
@@ -22,6 +23,7 @@ public class QuestionPool {
     private String options;
 
     private int difficulty;
+    @Column(name = "used_count")
     private int usedCount;
 
     public Long getId() { return id; }
