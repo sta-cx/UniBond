@@ -31,7 +31,7 @@ public class CoupleService {
 
     @Transactional
     public Couple bind(Long userId, String inviteCode) {
-        User me = userRepository.findById(userId)
+        User me = userRepository.findByIdForUpdate(userId)
             .orElseThrow(() -> new BizException(ErrorCode.USER_NOT_FOUND));
 
         if (me.getPartnerId() != null) {
@@ -40,6 +40,9 @@ public class CoupleService {
 
         User partner = userRepository.findByInviteCode(inviteCode)
             .orElseThrow(() -> new BizException(ErrorCode.INVITE_CODE_INVALID));
+
+        partner = userRepository.findByIdForUpdate(partner.getId())
+            .orElseThrow(() -> new BizException(ErrorCode.USER_NOT_FOUND));
 
         if (partner.getId().equals(userId)) {
             throw new BizException(ErrorCode.INVITE_CODE_SELF);

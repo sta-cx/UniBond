@@ -4,6 +4,7 @@ import WidgetKit
 
 enum QuizCardState {
     case unbound
+    case noQuiz
     case available(QuizResponse)
     case answeredWaiting(date: String)
     case waitingReveal(date: String)
@@ -84,7 +85,7 @@ class HomeViewModel {
                 AppSettings.shared.sharedQuizAnswered = false
             }
         } catch {
-            quizCardState = .unbound
+            quizCardState = .noQuiz
         }
     }
 

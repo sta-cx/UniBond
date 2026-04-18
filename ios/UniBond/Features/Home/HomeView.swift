@@ -14,7 +14,7 @@ struct HomeView: View {
                             .font(.system(size: 28, weight: .bold))
                             .foregroundStyle(AppColors.textPrimary)
                         if let user = appState.currentUser {
-                            Text(user.nickname)
+                            Text(user.nickname ?? "用户")
                                 .font(.system(size: 15))
                                 .foregroundStyle(AppColors.textSecondary)
                         }
@@ -44,7 +44,11 @@ struct HomeView: View {
             .padding(.horizontal, 20)
         }
         .gradientBackground()
-        .task { await viewModel.loadData() }
+        .onAppear {
+            if !viewModel.isLoading {
+                Task { await viewModel.loadData() }
+            }
+        }
         .onDisappear { viewModel.stopPolling() }
         .refreshable { await viewModel.loadData() }
     }
@@ -59,6 +63,17 @@ struct HomeView: View {
                     PrimaryButton("去绑定", icon: "link") {
                         router.navigateHome(to: .bindPartner)
                     }
+                }
+                .padding(20)
+            }
+        case .noQuiz:
+            CardView {
+                VStack(spacing: 12) {
+                    Text("🎯").font(.system(size: 28))
+                    Text("今日默契挑战").font(.system(size: 17, weight: .semibold))
+                    Text("今日题目还未生成，请稍后再来")
+                        .font(.system(size: 13))
+                        .foregroundStyle(AppColors.textSecondary)
                 }
                 .padding(20)
             }
@@ -128,35 +143,66 @@ struct HomeView: View {
 
     private var moodSection: some View {
         CardView {
-            VStack(spacing: 12) {
+            VStack(spacing: 16) {
                 HStack {
-                    Text("心情同步").font(.system(size: 17, weight: .semibold))
+                    Image(systemName: "heart.fill")
+                        .font(.system(size: 14))
+                        .foregroundStyle(AppColors.primaryPink)
+                    Text("心情同步")
+                        .font(.system(size: 17, weight: .semibold))
                     Spacer()
-                    Button("更新心情") {
-                        router.activeSheet = .moodPicker
-                    }
-                    .font(.system(size: 13))
-                    .foregroundStyle(AppColors.primaryPurple)
                 }
-                HStack(spacing: 24) {
-                    VStack(spacing: 4) {
-                        Text(viewModel.myMood?.emoji ?? "😊").font(.system(size: 32))
-                        Text("我").font(.system(size: 11)).foregroundStyle(AppColors.textSecondary)
-                    }
-                    VStack(spacing: 4) {
-                        Text(viewModel.partnerMood?.emoji ?? "❓").font(.system(size: 32))
-                        Text("TA").font(.system(size: 11)).foregroundStyle(AppColors.textSecondary)
-                    }
+
+                HStack(spacing: 0) {
                     Spacer()
-                    if let text = viewModel.partnerMood?.text, !text.isEmpty {
-                        Text(text)
+                    VStack(spacing: 8) {
+                        ZStack {
+                            Circle()
+                                .fill(AppColors.bgLight)
+                                .frame(width: 64, height: 64)
+                            Text(viewModel.myMood?.emoji ?? "😊")
+                                .font(.system(size: 32))
+                        }
+                        Text(viewModel.myMood != nil ? moodText(viewModel.myMood?.emoji) : "我心情好")
                             .font(.system(size: 13))
                             .foregroundStyle(AppColors.textSecondary)
-                            .lineLimit(2)
                     }
+
+                    Spacer()
+
+                    VStack(spacing: 8) {
+                        ZStack {
+                            Circle()
+                                .fill(AppColors.bgLightPink)
+                                .frame(width: 64, height: 64)
+                            Text(viewModel.partnerMood?.emoji ?? "❓")
+                                .font(.system(size: 32))
+                        }
+                        Text(viewModel.partnerMood != nil ? moodText(viewModel.partnerMood?.emoji) : "TA心情好")
+                            .font(.system(size: 13))
+                            .foregroundStyle(AppColors.textSecondary)
+                    }
+
+                    Spacer()
+                }
+
+                PrimaryButton("更新心情") {
+                    router.activeSheet = .moodPicker
                 }
             }
             .padding(20)
+        }
+    }
+
+    private func moodText(_ emoji: String?) -> String {
+        guard let emoji else { return "" }
+        switch emoji {
+        case "😊", "😄", "😁": return "我心情好"
+        case "😢", "😭": return "有点难过"
+        case "😡", "😤": return "有点生气"
+        case "🥰", "😍": return "超级开心"
+        case "😴", "😪": return "有点困"
+        default: return "我心情好"
         }
     }
 }

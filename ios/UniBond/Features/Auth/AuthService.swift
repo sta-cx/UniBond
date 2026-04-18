@@ -1,8 +1,9 @@
 import AuthenticationServices
 import Foundation
 
+@MainActor
 final class AuthService: NSObject, ASAuthorizationControllerDelegate {
-    private var continuation: CheckedContinuation<(String, String?), Error>?
+    private var continuation: CheckedContinuation<(identityToken: String, nickname: String?), Error>?
 
     func signInWithApple() async throws -> (identityToken: String, nickname: String?) {
         try await withCheckedThrowingContinuation { continuation in

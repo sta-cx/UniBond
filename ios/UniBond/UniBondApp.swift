@@ -7,6 +7,7 @@ final class PushCoordinator {
 
     var apiClient: APIClient?
     weak var router: AppRouter?
+    weak var appState: AppState?
 
     func requestAuthorization() {
         let center = UNUserNotificationCenter.current()
@@ -29,7 +30,25 @@ final class PushCoordinator {
     func handleNotification(userInfo: [AnyHashable: Any]) {
         guard let type = userInfo["type"] as? String else { return }
         Task { @MainActor in
+            if type == "COUPLE_BOUND" {
+                await refreshCoupleState()
+            }
             router?.handleNotification(type: type)
+        }
+    }
+
+    @MainActor
+    private func refreshCoupleState() async {
+        guard let apiClient, let appState else { return }
+        do {
+            let user: UserResponse = try await apiClient.request(.me)
+            appState.authState = .authenticated(user)
+            if user.partnerId != nil {
+                let couple: CoupleResponse = try await apiClient.request(.coupleInfo)
+                appState.coupleState = .bound(couple)
+            }
+        } catch {
+            // Silently ignore
         }
     }
 }
@@ -67,7 +86,13 @@ struct UniBondApp: App {
 
     @State private var appState = AppState()
     @State private var router = AppRouter()
-    @State private var apiClient = APIClient(baseURL: "http://localhost:8080")
+    @State private var apiClient = APIClient(baseURL: {
+#if DEBUG
+        return "http://localhost:8080"
+#else
+        return "https://api.unibond.app"
+#endif
+    }())
     @State private var didBootstrap = false
 
     var body: some Scene {
@@ -87,6 +112,7 @@ struct UniBondApp: App {
                 appState.startNetworkMonitoring()
                 PushCoordinator.shared.apiClient = apiClient
                 PushCoordinator.shared.router = router
+                PushCoordinator.shared.appState = appState
                 PushCoordinator.shared.requestAuthorization()
                 await bootstrapSession()
             }
@@ -109,14 +135,14 @@ struct UniBondApp: App {
         guard KeychainManager.shared.accessToken != nil else { return }
         do {
             let user: UserResponse = try await apiClient.request(.me)
-            await MainActor.run {
-                appState.authState = .authenticated(user)
-            }
+            var coupleState: CoupleState = .unbound
             if user.partnerId != nil {
                 let couple: CoupleResponse = try await apiClient.request(.coupleInfo)
-                await MainActor.run {
-                    appState.coupleState = .bound(couple)
-                }
+                coupleState = .bound(couple)
+            }
+            await MainActor.run {
+                appState.authState = .authenticated(user)
+                appState.coupleState = coupleState
             }
         } catch {
             await MainActor.run {
@@ -135,26 +161,29 @@ struct MainTabView: View {
     var body: some View {
         VStack(spacing: 0) {
             ZStack {
-                switch router.selectedTab {
-                case 0:
-                    NavigationStack(path: Binding(get: { router.homePath }, set: { router.homePath = $0 })) {
-                        HomeView(viewModel: HomeViewModel(apiClient: apiClient, appState: appState))
-                            .navigationDestination(for: AppRoute.self) { route in
-                                homeDestination(route)
-                            }
-                    }
-                case 1:
-                    NavigationStack(path: Binding(get: { router.statsPath }, set: { router.statsPath = $0 })) {
-                        StatsView(viewModel: StatsViewModel(apiClient: apiClient))
-                    }
-                default:
-                    NavigationStack(path: Binding(get: { router.profilePath }, set: { router.profilePath = $0 })) {
-                        ProfileView(viewModel: ProfileViewModel(apiClient: apiClient, appState: appState))
-                            .navigationDestination(for: AppRoute.self) { route in
-                                profileDestination(route)
-                            }
-                    }
+                NavigationStack(path: Binding(get: { router.homePath }, set: { router.homePath = $0 })) {
+                    HomeView(viewModel: HomeViewModel(apiClient: apiClient, appState: appState))
+                        .navigationDestination(for: AppRoute.self) { route in
+                            homeDestination(route)
+                        }
                 }
+                .opacity(router.selectedTab == 0 ? 1 : 0)
+                .allowsHitTesting(router.selectedTab == 0)
+
+                NavigationStack(path: Binding(get: { router.statsPath }, set: { router.statsPath = $0 })) {
+                    StatsView(viewModel: StatsViewModel(apiClient: apiClient))
+                }
+                .opacity(router.selectedTab == 1 ? 1 : 0)
+                .allowsHitTesting(router.selectedTab == 1)
+
+                NavigationStack(path: Binding(get: { router.profilePath }, set: { router.profilePath = $0 })) {
+                    ProfileView(viewModel: ProfileViewModel(apiClient: apiClient, appState: appState))
+                        .navigationDestination(for: AppRoute.self) { route in
+                            profileDestination(route)
+                        }
+                }
+                .opacity(router.selectedTab == 2 ? 1 : 0)
+                .allowsHitTesting(router.selectedTab == 2)
             }
 
             TabBarView(selectedTab: Binding(get: { router.selectedTab }, set: { router.selectedTab = $0 }))
@@ -168,6 +197,8 @@ struct MainTabView: View {
                 )
             case .unbindConfirm:
                 UnbindConfirmView(viewModel: CoupleViewModel(apiClient: apiClient, appState: appState))
+                    .presentationBackground(.clear)
+                    .presentationDetents([.medium])
             }
         }
     }

@@ -18,6 +18,7 @@ public class DailyQuiz {
     private Long coupleId;
 
     @Enumerated(EnumType.STRING)
+    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
     @Column(name = "quiz_type")
     private QuizType quizType;
 
@@ -27,6 +28,7 @@ public class DailyQuiz {
     private String questions;
 
     @Enumerated(EnumType.STRING)
+    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
     @Column(name = "generation_source")
     private GenerationSource generationSource;
 

@@ -43,4 +43,30 @@ public class PushService {
             log.error("Failed to send push", e);
         }
     }
+
+    public void sendPush(String deviceToken, String title, String body, String type) {
+        if (apnsClient == null || deviceToken == null) return;
+
+        try {
+            String basePayload = new SimpleApnsPayloadBuilder()
+                .setAlertTitle(title)
+                .setAlertBody(body)
+                .setSound("default")
+                .build();
+            String payload = basePayload.replaceFirst("\\}$",
+                ",\"type\":\"" + type + "\"}");
+
+            var notification = new SimpleApnsPushNotification(
+                TokenUtil.sanitizeTokenString(deviceToken), topic, payload);
+            apnsClient.sendNotification(notification).whenComplete((resp, cause) -> {
+                if (cause != null) {
+                    log.error("APNs send failed", cause);
+                } else if (!resp.isAccepted()) {
+                    log.warn("APNs rejected: {}", resp.getRejectionReason());
+                }
+            });
+        } catch (Exception e) {
+            log.error("Failed to send push", e);
+        }
+    }
 }

@@ -16,7 +16,9 @@ public enum ErrorCode {
     QUIZ_NOT_REVEALED(HttpStatus.BAD_REQUEST, "结果未揭晓"),
     RATE_LIMIT_EXCEEDED(HttpStatus.TOO_MANY_REQUESTS, "请求频率超限"),
     USER_NOT_FOUND(HttpStatus.NOT_FOUND, "用户不存在"),
-    FORBIDDEN(HttpStatus.FORBIDDEN, "无权限访问");
+    FORBIDDEN(HttpStatus.FORBIDDEN, "无权限访问"),
+    INVALID_TOKEN_TYPE(HttpStatus.UNAUTHORIZED, "Token类型错误"),
+    INVALID_PARAMETER(HttpStatus.BAD_REQUEST, "参数无效");
 
     private final HttpStatus status;
     private final String message;

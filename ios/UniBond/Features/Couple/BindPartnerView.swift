@@ -32,6 +32,11 @@ struct BindPartnerView: View {
                             }
                         }
                         .foregroundStyle(AppColors.primaryPurple)
+
+                        Text("将邀请码发给 TA，等待对方绑定...")
+                            .font(.system(size: 13))
+                            .foregroundStyle(AppColors.textSecondary)
+                            .padding(.top, 4)
                     }
                     .padding(20)
                 }
@@ -81,5 +86,12 @@ struct BindPartnerView: View {
         }
         .gradientBackground()
         .navigationTitle("绑定伴侣")
+        .task { viewModel.startBindPolling() }
+        .onDisappear { viewModel.stopBindPolling() }
+        .onChange(of: viewModel.bindSucceeded) { _, succeeded in
+            if succeeded {
+                router.homePath = NavigationPath()
+            }
+        }
     }
 }

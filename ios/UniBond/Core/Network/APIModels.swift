@@ -42,7 +42,7 @@ struct AuthResponse: Codable {
 struct UserResponse: Codable, Equatable {
     let id: Int64
     let email: String?
-    let nickname: String
+    let nickname: String?
     let avatarUrl: String?
     let authProvider: String
     let inviteCode: String
@@ -60,7 +60,7 @@ struct ProfileUpdateRequest: Codable {
 struct CoupleResponse: Codable, Equatable {
     let id: Int64
     let partnerUserId: Int64
-    let partnerNickname: String
+    let partnerNickname: String?
     let anniversaryDate: String?
     let bindAt: String
 }

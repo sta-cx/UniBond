@@ -13,7 +13,7 @@ struct ProfileView: View {
                         .fill(AppColors.primaryGradient)
                         .frame(width: 72, height: 72)
                         .overlay(
-                            Text(String(appState.currentUser?.nickname.prefix(1) ?? "U"))
+                            Text(String((appState.currentUser?.nickname ?? "U").prefix(1)))
                                 .font(.system(size: 28, weight: .bold))
                                 .foregroundStyle(.white)
                         )
@@ -57,7 +57,7 @@ struct ProfileView: View {
                             HStack {
                                 Text("💑").font(.system(size: 24))
                                 VStack(alignment: .leading, spacing: 2) {
-                                    Text("与 \(couple.partnerNickname) 已绑定")
+                                    Text("与 \(couple.partnerNickname ?? "TA") 已绑定")
                                         .font(.system(size: 15, weight: .medium))
                                     if let days = viewModel.daysTogether {
                                         Text("在一起 \(days) 天")

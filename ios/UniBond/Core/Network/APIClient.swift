@@ -8,14 +8,17 @@ actor APIClient {
     private var isRefreshing = false
     private var refreshContinuations: [CheckedContinuation<Void, Error>] = []
 
-    init(baseURL: String, session: URLSession = .shared) {
+    init(baseURL: String, session: URLSession? = nil) {
         self.baseURL = baseURL
-        self.session = session
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 30
+        config.timeoutIntervalForResource = 60
+        self.session = session ?? URLSession(configuration: config)
         self.encoder = JSONEncoder()
         self.decoder = JSONDecoder()
     }
 
-    func request<T: Decodable>(_ endpoint: APIEndpoint) async throws -> T {
+    func request<T: Codable>(_ endpoint: APIEndpoint) async throws -> T {
         let (data, _) = try await performRequest(endpoint)
         do {
             let wrapper = try decoder.decode(ApiResponse<T>.self, from: data)
@@ -70,29 +73,44 @@ actor APIClient {
         }
 
         isRefreshing = true
-        defer {
-            isRefreshing = false
+        var refreshError: Error?
+
+        do {
+            guard let refreshToken = KeychainManager.shared.refreshToken else {
+                KeychainManager.shared.deleteTokens()
+                throw APIError.unauthorized
+            }
+
+            let refreshRequest = try buildRequest(for: .refreshToken(refreshToken))
+            let (data, response) = try await session.data(for: refreshRequest)
+            guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+                KeychainManager.shared.deleteTokens()
+                throw APIError.unauthorized
+            }
+
+            let authResponse = try decoder.decode(ApiResponse<AuthResponse>.self, from: data)
+            AuthInterceptor.storeTokens(access: authResponse.data.accessToken, refresh: authResponse.data.refreshToken)
+
+            // Resume waiting continuations with success
             let continuations = refreshContinuations
             refreshContinuations = []
             for continuation in continuations {
                 continuation.resume()
             }
+        } catch {
+            refreshError = error
+            // Resume waiting continuations with error
+            let continuations = refreshContinuations
+            refreshContinuations = []
+            for continuation in continuations {
+                continuation.resume(throwing: error)
+            }
         }
 
-        guard let refreshToken = KeychainManager.shared.refreshToken else {
-            KeychainManager.shared.deleteTokens()
-            throw APIError.unauthorized
+        isRefreshing = false
+        if let error = refreshError {
+            throw error
         }
-
-        let refreshRequest = try buildRequest(for: .refreshToken(refreshToken))
-        let (data, response) = try await session.data(for: refreshRequest)
-        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-            KeychainManager.shared.deleteTokens()
-            throw APIError.unauthorized
-        }
-
-        let authResponse = try decoder.decode(ApiResponse<AuthResponse>.self, from: data)
-        AuthInterceptor.storeTokens(access: authResponse.data.accessToken, refresh: authResponse.data.refreshToken)
     }
 
     func buildRequest(for endpoint: APIEndpoint) throws -> URLRequest {

@@ -22,7 +22,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         String header = req.getHeader("Authorization");
         if (header != null && header.startsWith("Bearer ")) {
             String token = header.substring(7);
-            if (jwtProvider.validate(token)) {
+            if (jwtProvider.validate(token) && "access".equals(jwtProvider.getType(token))) {
                 Long userId = jwtProvider.getUserId(token);
                 var principal = new UserPrincipal(userId);
                 var auth = new UsernamePasswordAuthenticationToken(principal, null, principal.getAuthorities());

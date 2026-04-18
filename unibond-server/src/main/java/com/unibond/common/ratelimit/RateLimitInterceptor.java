@@ -2,6 +2,7 @@ package com.unibond.common.ratelimit;
 
 import com.unibond.common.dto.ErrorResponse;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import io.github.bucket4j.Bandwidth;
 import io.github.bucket4j.Bucket;
 import jakarta.servlet.http.HttpServletRequest;
@@ -13,12 +14,16 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class RateLimitInterceptor implements HandlerInterceptor {
+    private static final int MAX_BUCKETS = 10000;
     private final Map<String, Bucket> buckets = new ConcurrentHashMap<>();
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final ObjectMapper objectMapper = new ObjectMapper().registerModule(new JavaTimeModule());
 
     @Override
     public boolean preHandle(HttpServletRequest req, HttpServletResponse res, Object handler) throws Exception {
         String key = resolveKey(req);
+        if (buckets.size() > MAX_BUCKETS) {
+            buckets.clear();
+        }
         Bucket bucket = buckets.computeIfAbsent(key, k -> createBucket(req.getRequestURI()));
 
         if (bucket.tryConsume(1)) {

@@ -3,6 +3,7 @@ package com.unibond.mood.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.unibond.common.exception.BizException;
 import com.unibond.common.exception.ErrorCode;
+import com.unibond.common.util.InputSanitizer;
 import com.unibond.couple.entity.Couple;
 import com.unibond.couple.service.CoupleService;
 import com.unibond.mood.entity.MoodStatus;
@@ -45,7 +46,7 @@ public class MoodService {
         mood.setUserId(userId);
         mood.setCoupleId(couple.getId());
         mood.setMoodEmoji(emoji);
-        mood.setMoodText(text);
+        mood.setMoodText(text != null ? InputSanitizer.sanitizeText(text, 200) : null);
         mood.setUpdatedAt(java.time.Instant.now());
         mood = moodRepo.save(mood);
 

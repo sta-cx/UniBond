@@ -68,7 +68,7 @@ public class QuizService {
             for (int i = 0; i < Math.min(a.size(), b.size()); i++) {
                 if (a.get(i).equals(b.get(i))) matches++;
             }
-            return matches * 100 / 5;
+            return Math.min(a.size(), b.size()) > 0 ? matches * 100 / Math.min(a.size(), b.size()) : 0;
         } catch (Exception e) {
             return 0;
         }

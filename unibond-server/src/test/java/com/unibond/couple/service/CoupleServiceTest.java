@@ -41,8 +41,9 @@ class CoupleServiceTest {
 
     @Test
     void bind_success() {
-        when(userRepository.findById(1L)).thenReturn(Optional.of(userA));
+        when(userRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(userA));
         when(userRepository.findByInviteCode("XYZ789")).thenReturn(Optional.of(userB));
+        when(userRepository.findByIdForUpdate(2L)).thenReturn(Optional.of(userB));
         when(coupleRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         Couple couple = coupleService.bind(1L, "XYZ789");
@@ -56,8 +57,9 @@ class CoupleServiceTest {
 
     @Test
     void bind_selfInviteCode_throws() {
-        when(userRepository.findById(1L)).thenReturn(Optional.of(userA));
+        when(userRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(userA));
         when(userRepository.findByInviteCode("ABC123")).thenReturn(Optional.of(userA));
+        when(userRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(userA));
 
         BizException ex = assertThrows(BizException.class,
             () -> coupleService.bind(1L, "ABC123"));
@@ -67,7 +69,7 @@ class CoupleServiceTest {
     @Test
     void bind_alreadyBound_throws() {
         userA.setPartnerId(3L);
-        when(userRepository.findById(1L)).thenReturn(Optional.of(userA));
+        when(userRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(userA));
 
         BizException ex = assertThrows(BizException.class,
             () -> coupleService.bind(1L, "XYZ789"));

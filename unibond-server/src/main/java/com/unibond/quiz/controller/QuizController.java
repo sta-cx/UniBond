@@ -63,6 +63,13 @@ public class QuizController {
             @Valid @RequestBody AnswerRequest req) {
         Couple couple = coupleService.getActiveCouple(principal.userId());
 
+        // Verify quiz belongs to this couple
+        DailyQuiz quiz = quizRepo.findById(req.quizId())
+            .orElseThrow(() -> new BizException(ErrorCode.QUIZ_NOT_AVAILABLE));
+        if (!quiz.getCoupleId().equals(couple.getId())) {
+            throw new BizException(ErrorCode.FORBIDDEN);
+        }
+
         QuizAnswer answer = quizService.submitAnswer(
             principal.userId(), req.quizId(), couple.getId(), req.answers(), req.partnerGuess());
 
@@ -74,7 +81,6 @@ public class QuizController {
                 .findFirst().orElse(null);
         }
 
-        DailyQuiz quiz = quizRepo.findById(req.quizId()).orElseThrow();
         return ApiResponse.ok(new QuizResultResponse(
             answer.getScore() != null ? answer.getScore() : 0,
             answer.getRevealed(),

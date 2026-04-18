@@ -34,8 +34,10 @@ class AuthViewModel {
         self.appState = appState
     }
 
-    deinit {
-        countdownTimer?.invalidate()
+    nonisolated deinit {
+        MainActor.assumeIsolated {
+            countdownTimer?.invalidate()
+        }
     }
 
     func sendCode() async {
@@ -100,13 +102,13 @@ class AuthViewModel {
 
         do {
             let user: UserResponse = try await apiClient.request(.me)
-            appState.authState = .authenticated(user)
+            var coupleState: CoupleState = .unbound
             if user.partnerId != nil {
                 let couple: CoupleResponse = try await apiClient.request(.coupleInfo)
-                appState.coupleState = .bound(couple)
-            } else {
-                appState.coupleState = .unbound
+                coupleState = .bound(couple)
             }
+            appState.authState = .authenticated(user)
+            appState.coupleState = coupleState
         } catch {
             appState.authState = .unauthenticated
             appState.coupleState = .unbound

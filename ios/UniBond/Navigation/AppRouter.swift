@@ -45,6 +45,8 @@ class AppRouter {
             navigateHome(to: .quizResult(date: Date().iso8601DateString))
         case "PARTNER_MOOD":
             selectedTab = 0
+        case "COUPLE_BOUND":
+            selectedTab = 0
         case "ACHIEVEMENT_UNLOCKED", "STREAK_MILESTONE":
             navigateStats()
         default:

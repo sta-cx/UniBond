@@ -46,8 +46,15 @@ public class JwtProvider {
     }
 
     public Long getUserId(String token) {
-        Claims claims = Jwts.parser().verifyWith(key).build()
+        return Long.parseLong(getClaims(token).getSubject());
+    }
+
+    public String getType(String token) {
+        return getClaims(token).get("type", String.class);
+    }
+
+    private Claims getClaims(String token) {
+        return Jwts.parser().verifyWith(key).build()
             .parseSignedClaims(token).getPayload();
-        return Long.parseLong(claims.getSubject());
     }
 }

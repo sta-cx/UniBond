@@ -12,7 +12,7 @@ enum CoupleState: Equatable {
     case bound(CoupleResponse)
 }
 
-@Observable
+@MainActor @Observable
 class AppState {
     var authState: AuthState = .unauthenticated
     var coupleState: CoupleState = .unbound

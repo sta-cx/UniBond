@@ -5,6 +5,8 @@ import com.unibond.auth.service.AppleAuthService;
 import com.unibond.auth.service.AuthService;
 import com.unibond.auth.service.EmailService;
 import com.unibond.common.dto.ApiResponse;
+import com.unibond.common.exception.BizException;
+import com.unibond.common.exception.ErrorCode;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
 
@@ -23,7 +25,7 @@ public class AuthController {
     }
 
     @PostMapping("/email/send")
-    public ApiResponse<Void> sendCode(@Valid @RequestBody EmailSendRequest req) throws Exception {
+    public ApiResponse<Void> sendCode(@Valid @RequestBody EmailSendRequest req) {
         authService.sendEmailCode(req.email());
         String code = authService.getEmailCode(req.email());
         emailService.sendVerificationCode(req.email(), code);
@@ -43,13 +45,20 @@ public class AuthController {
 
     @PostMapping("/refresh")
     public ApiResponse<AuthResponse> refresh(@RequestBody java.util.Map<String, String> body) {
-        return ApiResponse.ok(authService.refresh(body.get("refreshToken")));
+        String refreshToken = body.get("refreshToken");
+        if (refreshToken == null || refreshToken.isBlank()) {
+            throw new BizException(ErrorCode.INVALID_PARAMETER);
+        }
+        return ApiResponse.ok(authService.refresh(refreshToken));
     }
 
     @PostMapping("/logout")
     public ApiResponse<Void> logout(@RequestBody java.util.Map<String, String> body) {
-        // Accepts refreshToken in body — access token may be expired
-        authService.logoutByRefreshToken(body.get("refreshToken"));
+        String refreshToken = body.get("refreshToken");
+        if (refreshToken == null || refreshToken.isBlank()) {
+            throw new BizException(ErrorCode.INVALID_PARAMETER);
+        }
+        authService.logoutByRefreshToken(refreshToken);
         return ApiResponse.ok(null);
     }
 }

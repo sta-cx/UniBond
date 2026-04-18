@@ -7,9 +7,11 @@ class CoupleViewModel {
     var partnerCode = ""
     var isLoading = false
     var errorMessage: String?
+    var bindSucceeded = false
 
     private let apiClient: APIClient
     private let appState: AppState
+    private var pollTask: Task<Void, Never>?
 
     init(apiClient: APIClient, appState: AppState) {
         self.apiClient = apiClient
@@ -50,5 +52,41 @@ class CoupleViewModel {
             isLoading = false
             return false
         }
+    }
+
+    // MARK: - Bind Polling
+
+    func startBindPolling() {
+        guard pollTask == nil else { return }
+        pollTask = Task {
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(5))
+                guard !Task.isCancelled else { return }
+                if await checkBindStatus() {
+                    bindSucceeded = true
+                    return
+                }
+            }
+        }
+    }
+
+    func stopBindPolling() {
+        pollTask?.cancel()
+        pollTask = nil
+    }
+
+    private func checkBindStatus() async -> Bool {
+        do {
+            let user: UserResponse = try await apiClient.request(.me)
+            if user.partnerId != nil {
+                let couple: CoupleResponse = try await apiClient.request(.coupleInfo)
+                appState.authState = .authenticated(user)
+                appState.coupleState = .bound(couple)
+                return true
+            }
+        } catch {
+            // Silently ignore polling errors
+        }
+        return false
     }
 }

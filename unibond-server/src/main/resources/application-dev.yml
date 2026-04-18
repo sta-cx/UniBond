@@ -3,6 +3,11 @@ spring:
     url: jdbc:postgresql://39.105.121.125:5432/unibond
     username: unibond
     password: hFA1fzIvbistaZ3xKzStnQ6WXUA77LM
+    hikari:
+      max-lifetime: 300000
+      keepalive-time: 120000
+      validation-timeout: 5000
+      connection-test-query: SELECT 1
   data:
     redis:
       host: 39.105.121.125

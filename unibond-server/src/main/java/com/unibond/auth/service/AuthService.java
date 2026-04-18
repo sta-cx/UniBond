@@ -79,6 +79,9 @@ public class AuthService {
         if (!jwtProvider.validate(refreshToken)) {
             throw new BizException(ErrorCode.AUTH_TOKEN_INVALID);
         }
+        if (!"refresh".equals(jwtProvider.getType(refreshToken))) {
+            throw new BizException(ErrorCode.INVALID_TOKEN_TYPE);
+        }
         Long userId = jwtProvider.getUserId(refreshToken);
         String stored = redisTemplate.opsForValue().get("refresh:" + userId);
         if (stored == null || !stored.equals(refreshToken)) {

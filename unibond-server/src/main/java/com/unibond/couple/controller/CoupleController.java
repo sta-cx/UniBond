@@ -48,6 +48,13 @@ public class CoupleController {
         Long partnerId = couple.getUserAId().equals(principal.userId())
             ? couple.getUserBId() : couple.getUserAId();
         User partner = userRepository.findById(partnerId).orElseThrow();
+
+        // Send push notification to partner
+        if (partner.getDeviceToken() != null) {
+            pushService.sendPush(partner.getDeviceToken(),
+                "UniBond", "你的伴侣已确认绑定！", "COUPLE_BOUND");
+        }
+
         return ApiResponse.ok(new CoupleResponse(
             couple.getId(), partnerId, partner.getNickname(),
             couple.getAnniversaryDate(), couple.getBindAt()));
