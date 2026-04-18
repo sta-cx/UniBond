@@ -13,11 +13,11 @@ struct EmojiGrid: View {
                     Text(emoji)
                         .font(.system(size: 32))
                         .frame(width: 56, height: 56)
-                        .background(selected == emoji ? AppColors.primaryPurple.opacity(0.15) : .white.opacity(0.6))
+                        .background(selected == emoji ? AppColors.primaryPink.opacity(0.15) : .white.opacity(0.6))
                         .clipShape(RoundedRectangle(cornerRadius: 12))
                         .overlay(
                             RoundedRectangle(cornerRadius: 12)
-                                .stroke(selected == emoji ? AppColors.primaryPurple : .clear, lineWidth: 2)
+                                .stroke(selected == emoji ? AppColors.primaryPink : .clear, lineWidth: 2)
                         )
                 }
                 .buttonStyle(.plain)

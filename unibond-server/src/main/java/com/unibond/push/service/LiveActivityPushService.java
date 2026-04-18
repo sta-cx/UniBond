@@ -49,4 +49,31 @@ public class LiveActivityPushService {
             log.error("Failed to update Live Activity", e);
         }
     }
+
+    public void endActivity(String pushToken) {
+        if (apnsClient == null || pushToken == null) return;
+
+        try {
+            Map<String, Object> payload = Map.of(
+                "aps", Map.of(
+                    "timestamp", Instant.now().getEpochSecond(),
+                    "event", "end",
+                    "content-state", Map.of(
+                        "emoji", "",
+                        "text", "",
+                        "updatedAt", Instant.now().toString()
+                    )
+                )
+            );
+            String payloadJson = objectMapper.writeValueAsString(payload);
+
+            var notification = new SimpleApnsPushNotification(
+                TokenUtil.sanitizeTokenString(pushToken),
+                topic + ".push-type.liveactivity",
+                payloadJson);
+            apnsClient.sendNotification(notification);
+        } catch (Exception e) {
+            log.error("Failed to end Live Activity", e);
+        }
+    }
 }

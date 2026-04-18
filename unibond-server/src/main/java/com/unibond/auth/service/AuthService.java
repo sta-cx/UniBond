@@ -129,13 +129,26 @@ public class AuthService {
         if (Boolean.TRUE.equals(redisTemplate.hasKey(rateLimitKey))) {
             throw new BizException(ErrorCode.RATE_LIMIT_EXCEEDED);
         }
+        // Hourly limit: 5 per hour per email
+        String hourlyKey = "email_hourly:" + email;
+        String hourlyCount = redisTemplate.opsForValue().get(hourlyKey);
+        if (hourlyCount != null && Integer.parseInt(hourlyCount) >= 5) {
+            throw new BizException(ErrorCode.RATE_LIMIT_EXCEEDED);
+        }
         String code = String.format("%06d", random.nextInt(1000000));
         redisTemplate.opsForValue().set("email_code:" + email, code, 5, TimeUnit.MINUTES);
         redisTemplate.opsForValue().set(rateLimitKey, "1", 60, TimeUnit.SECONDS);
+        redisTemplate.opsForValue().increment(hourlyKey);
+        redisTemplate.expire(hourlyKey, 1, TimeUnit.HOURS);
     }
 
     public String getEmailCode(String email) {
-        // Used by EmailService to get the generated code for sending
         return redisTemplate.opsForValue().get("email_code:" + email);
+    }
+
+    public void cleanupEmailCode(String email) {
+        redisTemplate.delete("email_code:" + email);
+        redisTemplate.delete("email_rate:" + email);
+        redisTemplate.delete("email_hourly:" + email);
     }
 }

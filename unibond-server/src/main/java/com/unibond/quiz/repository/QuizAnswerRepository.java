@@ -14,4 +14,8 @@ public interface QuizAnswerRepository extends JpaRepository<QuizAnswer, Long> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT COUNT(a) FROM QuizAnswer a WHERE a.dailyQuizId = :quizId")
     long countByDailyQuizIdForUpdate(Long quizId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT a FROM QuizAnswer a WHERE a.dailyQuizId = :quizId")
+    List<QuizAnswer> findAllByDailyQuizIdForUpdate(Long quizId);
 }

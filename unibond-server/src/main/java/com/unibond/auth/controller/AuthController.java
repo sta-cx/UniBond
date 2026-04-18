@@ -28,7 +28,12 @@ public class AuthController {
     public ApiResponse<Void> sendCode(@Valid @RequestBody EmailSendRequest req) {
         authService.sendEmailCode(req.email());
         String code = authService.getEmailCode(req.email());
-        emailService.sendVerificationCode(req.email(), code);
+        try {
+            emailService.sendVerificationCode(req.email(), code);
+        } catch (Exception e) {
+            authService.cleanupEmailCode(req.email());
+            throw new BizException(ErrorCode.EMAIL_SEND_FAILED);
+        }
         return ApiResponse.ok(null);
     }
 

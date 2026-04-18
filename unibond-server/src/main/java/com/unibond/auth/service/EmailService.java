@@ -39,7 +39,8 @@ public class EmailService {
             helper.setText(html, true);
             mailSender.send(msg);
         } catch (Exception e) {
-            log.warn("Failed to send email to {}: {}", to, e.getMessage());
+            log.error("Failed to send email to {}: {}", to, e.getMessage());
+            throw new RuntimeException("邮件发送失败", e);
         }
     }
 }

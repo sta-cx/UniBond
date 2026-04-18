@@ -18,6 +18,8 @@ public class MoodStatus {
     private String moodText;
     @Column(name = "updated_at")
     private Instant updatedAt;
+    @Column(name = "version")
+    private Long version = 1L;
 
     @PrePersist @PreUpdate
     void preUpdate() { updatedAt = Instant.now(); }
@@ -34,4 +36,6 @@ public class MoodStatus {
     public void setMoodText(String t) { this.moodText = t; }
     public Instant getUpdatedAt() { return updatedAt; }
     public void setUpdatedAt(Instant u) { this.updatedAt = u; }
+    public Long getVersion() { return version; }
+    public void setVersion(Long version) { this.version = version; }
 }

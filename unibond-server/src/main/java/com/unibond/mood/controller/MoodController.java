@@ -7,6 +7,8 @@ import com.unibond.mood.dto.MoodUpdateRequest;
 import com.unibond.mood.entity.MoodStatus;
 import com.unibond.mood.service.MoodService;
 import jakarta.validation.Valid;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
@@ -28,9 +30,17 @@ public class MoodController {
     }
 
     @GetMapping("/partner")
-    public ApiResponse<MoodResponse> partnerMood(@AuthenticationPrincipal UserPrincipal principal) {
+    public ResponseEntity<ApiResponse<MoodResponse>> partnerMood(
+            @AuthenticationPrincipal UserPrincipal principal,
+            @RequestParam(required = false) Long version) {
+        Long currentVersion = moodService.getPartnerMoodVersion(principal.userId());
+        if (currentVersion == null) return ResponseEntity.ok(ApiResponse.ok(null));
+        if (version != null && version.equals(currentVersion)) {
+            return ResponseEntity.status(HttpStatus.NOT_MODIFIED).build();
+        }
         MoodStatus mood = moodService.getPartnerMood(principal.userId());
-        if (mood == null) return ApiResponse.ok(null);
-        return ApiResponse.ok(new MoodResponse(mood.getMoodEmoji(), mood.getMoodText(), mood.getUpdatedAt()));
+        if (mood == null) return ResponseEntity.ok(ApiResponse.ok(null));
+        return ResponseEntity.ok(ApiResponse.ok(
+            new MoodResponse(mood.getMoodEmoji(), mood.getMoodText(), mood.getUpdatedAt())));
     }
 }

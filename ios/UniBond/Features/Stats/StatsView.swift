@@ -35,27 +35,38 @@ struct StatsView: View {
                 if let overview = viewModel.overview {
                     HStack(spacing: 12) {
                         StatCard(value: String(format: "%.0f", overview.avgScore), label: "平均默契分", color: AppColors.primaryPurple)
-                        StatCard(value: "\(overview.streakDays)天", label: "连续天数", color: AppColors.success)
+                        StatCard(value: "\(overview.streakDays)", label: "默契打卡", color: AppColors.success)
                         StatCard(value: "\(overview.totalQuizzes)", label: "累计答题", color: AppColors.primaryPink)
                     }
                 }
 
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("成就徽章")
-                        .font(.system(size: 17, weight: .semibold))
+                    HStack {
+                        Text("成就徽章")
+                            .font(.system(size: 17, weight: .semibold))
+                        Spacer()
+                        if !viewModel.achievements.isEmpty {
+                            let unlocked = viewModel.achievements.filter(\.unlocked).count
+                            Text("\(unlocked)/\(viewModel.achievements.count)")
+                                .font(.system(size: 13))
+                                .foregroundStyle(AppColors.textSecondary)
+                        }
+                    }
                     if viewModel.achievements.isEmpty {
                         EmptyStateView(icon: "🏆", message: "继续答题解锁更多成就")
                     } else {
-                        let columns = Array(repeating: GridItem(.flexible()), count: 4)
-                        LazyVGrid(columns: columns, spacing: 16) {
-                            ForEach(viewModel.achievements, id: \.type) { achievement in
-                                AchievementBadge(
-                                    name: achievement.displayName,
-                                    icon: achievementIcon(achievement.type),
-                                    subtitle: achievement.unlocked ? "已解锁" : "未解锁",
-                                    unlocked: achievement.unlocked
-                                )
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 16) {
+                                ForEach(viewModel.achievements, id: \.type) { achievement in
+                                    AchievementBadge(
+                                        name: achievement.displayName,
+                                        icon: achievementIcon(achievement.type),
+                                        subtitle: achievement.unlocked ? "已解锁" : "未解锁",
+                                        unlocked: achievement.unlocked
+                                    )
+                                }
                             }
+                            .padding(.horizontal, 4)
                         }
                     }
                 }

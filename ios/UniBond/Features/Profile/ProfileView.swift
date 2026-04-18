@@ -55,9 +55,14 @@ struct ProfileView: View {
                     CardView {
                         VStack(spacing: 12) {
                             HStack {
-                                Text("💑").font(.system(size: 24))
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text("与 \(couple.partnerNickname ?? "TA") 已绑定")
+                                Text("💕").font(.system(size: 24))
+                                Text("情侣信息")
+                                    .font(.system(size: 15, weight: .semibold))
+                                Spacer()
+                            }
+                            HStack {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(couple.partnerNickname ?? "TA")
                                         .font(.system(size: 15, weight: .medium))
                                     if let days = viewModel.daysTogether {
                                         Text("在一起 \(days) 天")
@@ -70,8 +75,24 @@ struct ProfileView: View {
                             HStack {
                                 Text("邀请码：\(appState.currentUser?.inviteCode ?? "")")
                                     .font(.system(size: 13, design: .monospaced))
-                                    .foregroundStyle(AppColors.textSecondary)
+                                    .foregroundStyle(AppColors.primaryPurple)
                                 Spacer()
+                                Button {
+                                    UIPasteboard.general.string = appState.currentUser?.inviteCode ?? ""
+                                } label: {
+                                    Image(systemName: "doc.on.doc")
+                                        .font(.system(size: 13))
+                                        .foregroundStyle(AppColors.textSecondary)
+                                }
+                            }
+                            if appState.isBound {
+                                Button {
+                                    router.activeSheet = .unbindConfirm
+                                } label: {
+                                    Text("解除绑定")
+                                        .font(.system(size: 13, weight: .medium))
+                                        .foregroundStyle(AppColors.primaryPink)
+                                }
                             }
                         }
                         .padding(16)
@@ -96,26 +117,13 @@ struct ProfileView: View {
                         settingsRow(icon: "bell.fill", title: "通知设置") {}
                         Divider().padding(.leading, 44)
 
-                        if appState.isBound {
-                            settingsRow(icon: "lock.shield.fill", title: "隐私") {}
-                            Divider().padding(.leading, 44)
-                            settingsRow(icon: "bubble.left.fill", title: "意见反馈") {}
-                            Divider().padding(.leading, 44)
-                        }
-
-                        settingsRow(icon: "info.circle.fill", title: "关于 UniBond") {}
+                        settingsRow(icon: "lock.shield.fill", title: "隐私与安全") {}
                         Divider().padding(.leading, 44)
 
-                        if appState.isBound {
-                            settingsRow(icon: "heart.slash.fill", title: "解绑伴侣", color: .orange) {
-                                router.activeSheet = .unbindConfirm
-                            }
-                            Divider().padding(.leading, 44)
-                        }
+                        settingsRow(icon: "bubble.left.fill", title: "帮助与反馈") {}
+                        Divider().padding(.leading, 44)
 
-                        settingsRow(icon: "trash.fill", title: "删除账号", color: AppColors.error) {
-                            viewModel.showDeleteConfirm = true
-                        }
+                        settingsRow(icon: "info.circle.fill", title: "关于 UniBond") {}
                     }
                 }
 
@@ -133,14 +141,6 @@ struct ProfileView: View {
             .padding(.horizontal, 20)
         }
         .gradientBackground()
-        .alert("确认删除账号？", isPresented: Binding(get: { viewModel.showDeleteConfirm }, set: { viewModel.showDeleteConfirm = $0 })) {
-            Button("取消", role: .cancel) {}
-            Button("删除", role: .destructive) {
-                Task { await viewModel.deleteAccount() }
-            }
-        } message: {
-            Text("删除后所有数据将被永久清除，无法恢复。")
-        }
     }
 
     private func settingsRow(icon: String, title: String, color: Color = AppColors.textPrimary, action: @escaping () -> Void) -> some View {

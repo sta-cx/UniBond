@@ -5,6 +5,9 @@ import com.unibond.common.exception.ErrorCode;
 import com.unibond.couple.entity.Couple;
 import com.unibond.couple.entity.CoupleStatus;
 import com.unibond.couple.repository.CoupleRepository;
+import com.unibond.push.service.LiveActivityPushService;
+import com.unibond.quiz.repository.DailyQuizRepository;
+import com.unibond.stats.service.AchievementService;
 import com.unibond.user.entity.User;
 import com.unibond.user.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -22,7 +25,10 @@ import static org.mockito.Mockito.*;
 class CoupleServiceTest {
     @Mock private UserRepository userRepository;
     @Mock private CoupleRepository coupleRepository;
+    @Mock private DailyQuizRepository quizRepo;
     @Mock private StringRedisTemplate redisTemplate;
+    @Mock private LiveActivityPushService liveActivityPush;
+    @Mock private AchievementService achievementService;
     @InjectMocks private CoupleService coupleService;
 
     private User userA;

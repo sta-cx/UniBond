@@ -18,7 +18,6 @@ public class DailyQuiz {
     private Long coupleId;
 
     @Enumerated(EnumType.STRING)
-    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
     @Column(name = "quiz_type")
     private QuizType quizType;
 
@@ -28,13 +27,15 @@ public class DailyQuiz {
     private String questions;
 
     @Enumerated(EnumType.STRING)
-    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
     @Column(name = "generation_source")
     private GenerationSource generationSource;
 
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "prompt_context")
     private String promptContext;
+
+    @Column(name = "status")
+    private String status = "ACTIVE";
 
     @Column(name = "created_at")
     private Instant createdAt;
@@ -58,6 +59,8 @@ public class DailyQuiz {
     public void setGenerationSource(GenerationSource s) { this.generationSource = s; }
     public String getPromptContext() { return promptContext; }
     public void setPromptContext(String p) { this.promptContext = p; }
+    public String getStatus() { return status; }
+    public void setStatus(String status) { this.status = status; }
     public Instant getCreatedAt() { return createdAt; }
     public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }
 }

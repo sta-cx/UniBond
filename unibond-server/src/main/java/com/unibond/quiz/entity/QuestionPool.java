@@ -14,7 +14,6 @@ public class QuestionPool {
     private String category;
 
     @Enumerated(EnumType.STRING)
-    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
     @Column(name = "quiz_type")
     private QuizType quizType;
 

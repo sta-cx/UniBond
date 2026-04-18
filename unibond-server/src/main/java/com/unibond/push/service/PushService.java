@@ -9,6 +9,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import java.util.Map;
 
 @Service
 public class PushService {
@@ -67,6 +68,40 @@ public class PushService {
             });
         } catch (Exception e) {
             log.error("Failed to send push", e);
+        }
+    }
+
+    public void sendNotification(String deviceToken, String title, String body, String type, Map<String, String> data) {
+        if (apnsClient == null || deviceToken == null) return;
+
+        try {
+            String basePayload = new SimpleApnsPayloadBuilder()
+                .setAlertTitle(title)
+                .setAlertBody(body)
+                .setSound("default")
+                .build();
+
+            StringBuilder extra = new StringBuilder();
+            extra.append("\"type\":\"").append(type).append("\"");
+            if (data != null) {
+                for (var entry : data.entrySet()) {
+                    extra.append(",\"").append(entry.getKey()).append("\":\"").append(entry.getValue()).append("\"");
+                }
+            }
+
+            String payload = basePayload.replaceFirst("\\}$", "," + extra + "}");
+
+            var notification = new SimpleApnsPushNotification(
+                TokenUtil.sanitizeTokenString(deviceToken), topic, payload);
+            apnsClient.sendNotification(notification).whenComplete((resp, cause) -> {
+                if (cause != null) {
+                    log.error("APNs send failed", cause);
+                } else if (!resp.isAccepted()) {
+                    log.warn("APNs rejected: {}", resp.getRejectionReason());
+                }
+            });
+        } catch (Exception e) {
+            log.error("Failed to send push notification", e);
         }
     }
 }

@@ -38,6 +38,8 @@ class HomeViewModel {
 
         isLoading = true
         errorMessage = nil
+
+        // Load overview and partner mood independently
         do {
             async let overviewResult: OverviewResponse = apiClient.request(.overview)
             async let partnerMoodResult: MoodResponse? = try? apiClient.request(.partnerMood)
@@ -55,10 +57,13 @@ class HomeViewModel {
             }
 
             WidgetCenter.shared.reloadAllTimelines()
-            await loadQuizState()
         } catch {
             errorMessage = (error as? APIError)?.errorDescription ?? "加载失败"
         }
+
+        // Always load quiz state regardless of overview failure
+        await loadQuizState()
+
         isLoading = false
     }
 

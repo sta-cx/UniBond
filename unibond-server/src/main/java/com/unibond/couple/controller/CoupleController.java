@@ -1,6 +1,8 @@
 package com.unibond.couple.controller;
 
 import com.unibond.common.dto.ApiResponse;
+import com.unibond.common.exception.BizException;
+import com.unibond.common.exception.ErrorCode;
 import com.unibond.common.security.UserPrincipal;
 import com.unibond.couple.dto.BindRequest;
 import com.unibond.couple.dto.CoupleResponse;
@@ -13,6 +15,8 @@ import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
+import java.time.LocalDate;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/v1/couple")
@@ -49,7 +53,6 @@ public class CoupleController {
             ? couple.getUserBId() : couple.getUserAId();
         User partner = userRepository.findById(partnerId).orElseThrow();
 
-        // Send push notification to partner
         if (partner.getDeviceToken() != null) {
             pushService.sendPush(partner.getDeviceToken(),
                 "UniBond", "你的伴侣已确认绑定！", "COUPLE_BOUND");
@@ -63,15 +66,37 @@ public class CoupleController {
     @DeleteMapping("/unbind")
     public ApiResponse<Void> unbind(@AuthenticationPrincipal UserPrincipal principal) {
         User me = userRepository.findById(principal.userId()).orElseThrow();
-        User partner = userRepository.findById(me.getPartnerId()).orElse(null);
+        String partnerToken = null;
+        if (me.getPartnerId() != null) {
+            User partner = userRepository.findById(me.getPartnerId()).orElse(null);
+            if (partner != null && partner.getDeviceToken() != null) {
+                partnerToken = partner.getDeviceToken();
+            }
+        }
 
         coupleService.unbind(principal.userId());
 
-        // Send push notification to partner
-        if (partner != null && partner.getDeviceToken() != null) {
-            pushService.sendPush(partner.getDeviceToken(),
-                "UniBond", "你的情侣关系已被解除");
+        if (partnerToken != null) {
+            pushService.sendNotification(partnerToken, "UniBond", "你的情侣关系已被解除", "COUPLE_UNBIND", null);
         }
         return ApiResponse.ok(null);
+    }
+
+    @PutMapping("/anniversary")
+    public ApiResponse<CoupleResponse> updateAnniversary(
+            @AuthenticationPrincipal UserPrincipal principal,
+            @RequestBody Map<String, String> body) {
+        String dateStr = body.get("anniversaryDate");
+        if (dateStr == null || dateStr.isBlank()) {
+            throw new BizException(ErrorCode.INVALID_PARAMETER);
+        }
+        LocalDate date = LocalDate.parse(dateStr);
+        Couple couple = coupleService.updateAnniversary(principal.userId(), date);
+        Long partnerId = couple.getUserAId().equals(principal.userId())
+            ? couple.getUserBId() : couple.getUserAId();
+        User partner = userRepository.findById(partnerId).orElseThrow();
+        return ApiResponse.ok(new CoupleResponse(
+            couple.getId(), partnerId, partner.getNickname(),
+            couple.getAnniversaryDate(), couple.getBindAt()));
     }
 }

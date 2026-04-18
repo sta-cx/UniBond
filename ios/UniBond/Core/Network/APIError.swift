@@ -5,6 +5,7 @@ enum APIError: Error, LocalizedError {
     case forbidden
     case coupleNotBound
     case quizAlreadyAnswered
+    case quizNotAvailable
     case rateLimited
     case notFound
     case badRequest(String)
@@ -18,6 +19,7 @@ enum APIError: Error, LocalizedError {
         case .forbidden: return "没有权限执行此操作"
         case .coupleNotBound: return "请先绑定伴侣"
         case .quizAlreadyAnswered: return "今日已答题"
+        case .quizNotAvailable: return "今日题目尚未生成"
         case .rateLimited: return "操作太频繁，请稍后再试"
         case .notFound: return "请求的资源不存在"
         case .badRequest(let msg): return msg
@@ -33,6 +35,7 @@ enum APIError: Error, LocalizedError {
             switch code {
             case "COUPLE_NOT_BOUND": return .coupleNotBound
             case "QUIZ_ALREADY_ANSWERED": return .quizAlreadyAnswered
+            case "QUIZ_NOT_AVAILABLE": return .quizNotAvailable
             default: break
             }
         }

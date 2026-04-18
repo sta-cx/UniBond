@@ -18,7 +18,9 @@ public enum ErrorCode {
     USER_NOT_FOUND(HttpStatus.NOT_FOUND, "用户不存在"),
     FORBIDDEN(HttpStatus.FORBIDDEN, "无权限访问"),
     INVALID_TOKEN_TYPE(HttpStatus.UNAUTHORIZED, "Token类型错误"),
-    INVALID_PARAMETER(HttpStatus.BAD_REQUEST, "参数无效");
+    INVALID_PARAMETER(HttpStatus.BAD_REQUEST, "参数无效"),
+    EMAIL_SEND_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "邮件发送失败"),
+    QUIZ_CANCELLED(HttpStatus.BAD_REQUEST, "今日题目已取消");
 
     private final HttpStatus status;
     private final String message;

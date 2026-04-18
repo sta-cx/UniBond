@@ -1,7 +1,5 @@
 package com.unibond.stats.entity;
 import jakarta.persistence.*;
-import org.hibernate.annotations.JdbcTypeCode;
-import org.hibernate.type.SqlTypes;
 import java.time.LocalDate;
 @Entity @Table(name = "daily_stats")
 @IdClass(DailyStatsId.class)
@@ -13,7 +11,6 @@ public class DailyStats {
     @Column(name = "streak_days")
     private int streakDays;
     @Enumerated(EnumType.STRING)
-    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
     @Column(name = "quiz_type_played")
     private com.unibond.quiz.entity.QuizType quizTypePlayed;
 

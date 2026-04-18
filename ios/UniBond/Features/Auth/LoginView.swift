@@ -23,7 +23,7 @@ struct LoginView: View {
                 Text("UniBond")
                     .font(.system(size: 28, weight: .bold))
                     .foregroundStyle(AppColors.textPrimary)
-                Text("每日默契问答，让爱更近")
+                Text("每日默默问好，让爱更近")
                     .font(.system(size: 15))
                     .foregroundStyle(AppColors.textSecondary)
 

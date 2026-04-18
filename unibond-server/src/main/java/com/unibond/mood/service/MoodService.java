@@ -37,17 +37,26 @@ public class MoodService {
 
     @Transactional
     public MoodStatus updateMood(Long userId, String emoji, String text) {
+        if (emoji == null || !InputSanitizer.isValidEmoji(emoji)) {
+            throw new BizException(ErrorCode.INVALID_PARAMETER);
+        }
+
         User user = userRepo.findById(userId)
             .orElseThrow(() -> new BizException(ErrorCode.USER_NOT_FOUND));
 
         Couple couple = coupleService.getActiveCouple(userId);
 
+        // Version tracking
+        MoodStatus lastMood = moodRepo.findTopByUserIdOrderByUpdatedAtDesc(userId).orElse(null);
+        long newVersion = (lastMood != null && lastMood.getVersion() != null) ? lastMood.getVersion() + 1 : 1;
+
         MoodStatus mood = new MoodStatus();
         mood.setUserId(userId);
         mood.setCoupleId(couple.getId());
         mood.setMoodEmoji(emoji);
-        mood.setMoodText(text != null ? InputSanitizer.sanitizeText(text, 200) : null);
+        mood.setMoodText(text != null ? InputSanitizer.sanitizeText(text, 50) : null);
         mood.setUpdatedAt(java.time.Instant.now());
+        mood.setVersion(newVersion);
         mood = moodRepo.save(mood);
 
         // Cache in Redis
@@ -55,7 +64,8 @@ public class MoodService {
             String json = objectMapper.writeValueAsString(Map.of(
                 "emoji", emoji,
                 "text", text != null ? text : "",
-                "updatedAt", mood.getUpdatedAt().toString()
+                "updatedAt", mood.getUpdatedAt().toString(),
+                "version", newVersion
             ));
             redisTemplate.opsForValue().set("mood:" + userId, json);
         } catch (Exception ignored) {}
@@ -78,5 +88,13 @@ public class MoodService {
 
         return moodRepo.findTopByUserIdOrderByUpdatedAtDesc(user.getPartnerId())
             .orElse(null);
+    }
+
+    public Long getPartnerMoodVersion(Long userId) {
+        User user = userRepo.findById(userId)
+            .orElseThrow(() -> new BizException(ErrorCode.USER_NOT_FOUND));
+        if (user.getPartnerId() == null) throw new BizException(ErrorCode.COUPLE_NOT_BOUND);
+        return moodRepo.findTopByUserIdOrderByUpdatedAtDesc(user.getPartnerId())
+            .map(MoodStatus::getVersion).orElse(null);
     }
 }

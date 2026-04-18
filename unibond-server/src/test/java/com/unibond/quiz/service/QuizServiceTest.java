@@ -1,10 +1,11 @@
 package com.unibond.quiz.service;
 
-import com.unibond.common.exception.BizException;
-import com.unibond.common.exception.ErrorCode;
+import com.unibond.couple.repository.CoupleRepository;
 import com.unibond.quiz.entity.*;
 import com.unibond.quiz.repository.DailyQuizRepository;
 import com.unibond.quiz.repository.QuizAnswerRepository;
+import com.unibond.stats.repository.DailyStatsRepository;
+import com.unibond.stats.service.AchievementService;
 import com.unibond.user.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -21,13 +22,18 @@ import static org.mockito.Mockito.*;
 class QuizServiceTest {
     @Mock private DailyQuizRepository quizRepo;
     @Mock private QuizAnswerRepository answerRepo;
+    @Mock private DailyStatsRepository statsRepo;
+    @Mock private CoupleRepository coupleRepo;
     @Mock private UserRepository userRepo;
+    @Mock private AchievementService achievementService;
+    @Mock private com.unibond.push.service.PushService pushService;
 
     private QuizService quizService;
 
     @BeforeEach
     void setUp() {
-        quizService = new QuizService(quizRepo, answerRepo, userRepo);
+        quizService = new QuizService(quizRepo, answerRepo, statsRepo, coupleRepo,
+            userRepo, achievementService, pushService);
     }
 
     @Test
@@ -47,6 +53,14 @@ class QuizServiceTest {
         when(answerRepo.findByDailyQuizIdAndUserId(10L, 2L))
             .thenReturn(Optional.empty());
 
+        DailyQuiz quiz = new DailyQuiz();
+        quiz.setId(10L);
+        quiz.setCoupleId(5L);
+        quiz.setQuizType(QuizType.BLIND);
+        quiz.setStatus("ACTIVE");
+        quiz.setDate(java.time.LocalDate.now());
+        when(quizRepo.findById(10L)).thenReturn(Optional.of(quiz));
+
         QuizAnswer firstAnswer = new QuizAnswer();
         firstAnswer.setId(1L);
         firstAnswer.setUserId(1L);
@@ -54,7 +68,8 @@ class QuizServiceTest {
         firstAnswer.setRevealed(false);
 
         when(answerRepo.countByDailyQuizIdForUpdate(10L)).thenReturn(1L);
-        when(answerRepo.findByDailyQuizId(10L)).thenReturn(List.of(firstAnswer));
+        when(answerRepo.findAllByDailyQuizIdForUpdate(10L)).thenReturn(List.of(firstAnswer));
+        when(statsRepo.findByCoupleIdAndStatDate(eq(5L), any())).thenReturn(Optional.empty());
         when(answerRepo.save(any())).thenAnswer(inv -> {
             QuizAnswer a = inv.getArgument(0);
             a.setId(2L);

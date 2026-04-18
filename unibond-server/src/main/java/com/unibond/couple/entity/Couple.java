@@ -1,8 +1,6 @@
 package com.unibond.couple.entity;
 
 import jakarta.persistence.*;
-import org.hibernate.annotations.JdbcTypeCode;
-import org.hibernate.type.SqlTypes;
 import java.time.Instant;
 import java.time.LocalDate;
 
@@ -23,7 +21,6 @@ public class Couple {
     private Instant bindAt;
 
     @Enumerated(EnumType.STRING)
-    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
     private CoupleStatus status;
 
     @PrePersist
