@@ -24,33 +24,37 @@ struct QuizAnswerView: View {
                 if viewModel.currentQuestionIndex < viewModel.questions.count {
                     let question = viewModel.questions[viewModel.currentQuestionIndex]
 
-                    HStack {
-                        Text("答案模式")
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundStyle(AppColors.primaryPurple)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 4)
-                            .background(AppColors.primaryPurple.opacity(0.1))
-                            .clipShape(Capsule())
-                        Spacer()
-                    }
+                    CardView {
+                        VStack(spacing: 16) {
+                            HStack {
+                                Text("答案模式")
+                                    .font(.system(size: 12, weight: .medium))
+                                    .foregroundStyle(AppColors.primaryPurple)
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 4)
+                                    .background(AppColors.primaryPurple.opacity(0.1))
+                                    .clipShape(Capsule())
+                                Spacer()
+                            }
 
-                    Text(question.content)
-                        .font(.system(size: 20, weight: .semibold))
-                        .foregroundStyle(AppColors.textPrimary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.top, 8)
+                            Text(question.content)
+                                .font(.system(size: 20, weight: .semibold))
+                                .foregroundStyle(AppColors.textPrimary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
 
-                    VStack(spacing: 10) {
-                        ForEach(Array(question.options.enumerated()), id: \.offset) { index, option in
-                            QuizOptionRow(
-                                label: labels[index],
-                                text: option,
-                                isSelected: viewModel.selectedAnswers[viewModel.currentQuestionIndex] == index
-                            ) {
-                                viewModel.selectAnswer(questionIndex: viewModel.currentQuestionIndex, optionIndex: index)
+                            VStack(spacing: 10) {
+                                ForEach(Array(question.options.enumerated()), id: \.offset) { index, option in
+                                    QuizOptionRow(
+                                        label: labels[index],
+                                        text: option,
+                                        isSelected: viewModel.selectedAnswers[viewModel.currentQuestionIndex] == index
+                                    ) {
+                                        viewModel.selectAnswer(questionIndex: viewModel.currentQuestionIndex, optionIndex: index)
+                                    }
+                                }
                             }
                         }
+                        .padding(24)
                     }
 
                     Spacer()

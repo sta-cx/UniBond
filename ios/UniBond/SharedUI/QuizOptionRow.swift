@@ -31,7 +31,7 @@ struct QuizOptionRow: View {
                 }
             }
             .padding(16)
-            .background(.white.opacity(isSelected ? 1 : 0.8))
+            .background(.ultraThinMaterial)
             .clipShape(RoundedRectangle(cornerRadius: 12))
             .overlay(
                 RoundedRectangle(cornerRadius: 12)
