@@ -34,15 +34,22 @@ struct TabBarView: View {
                 Text(label)
                     .font(.system(size: 10, weight: .semibold))
                     .transaction { $0.animation = nil }
-
-                // Small dot indicator for active tab
-                Circle()
-                    .fill(AppColors.primaryPink)
-                    .frame(width: 4, height: 4)
-                    .opacity(selectedTab == index ? 1 : 0)
             }
             .frame(maxWidth: .infinity)
-            .foregroundStyle(selectedTab == index ? AppColors.primaryPurple : .secondary)
+            .padding(.horizontal, 20)
+            .padding(.vertical, 8)
+            .background(
+                selectedTab == index
+                    ? LinearGradient(
+                        colors: [AppColors.primaryPurple.opacity(0.12), AppColors.primaryPink.opacity(0.12)],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                    : nil
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 16))
+            .foregroundStyle(selectedTab == index ? AppColors.primaryPurple : .secondary.opacity(0.6))
+            .animation(.spring(duration: 0.3), value: selectedTab)
         }
     }
 }
