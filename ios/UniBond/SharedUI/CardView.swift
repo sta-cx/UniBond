@@ -9,7 +9,8 @@ struct CardView<Content: View>: View {
 
     var body: some View {
         content
-            .background(AppColors.cardBackground)
+            .background(.ultraThinMaterial)
             .clipShape(RoundedRectangle(cornerRadius: 16))
+            .shadow(color: .black.opacity(0.06), radius: 8, x: 0, y: 2)
     }
 }
