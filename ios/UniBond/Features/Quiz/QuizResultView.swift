@@ -76,6 +76,21 @@ struct QuizResultView: View {
                     PrimaryButton("去看看 TA 的心情") {
                         router.activeSheet = .moodPicker
                     }
+
+                    ShareLink(
+                        item: "今天我们在 UniBond 上得了 \(result.score) 分！连续默契挑战 ✨"
+                    ) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "square.and.arrow.up")
+                            Text("分享结果")
+                                .fontWeight(.semibold)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .foregroundStyle(.white)
+                        .background(AppColors.primaryGradient)
+                        .clipShape(RoundedRectangle(cornerRadius: 24))
+                    }
                 }
             }
             .padding(20)
